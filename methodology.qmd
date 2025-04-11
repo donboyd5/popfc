@@ -6,6 +6,13 @@ editor_options:
 
 # Cornell methodology
 
+## Principles
 
+-   Population change can be defined using the Demographic Balancing Equation:
 
+**Pop end = Pop start + Births – Deaths + In-migration – Out-migration**
 
+-   The size and sex/age structure of each component depends on the sex/age structure of Pop start.
+-   Survivors age (end – start) years and thus a sex/age structure of Pop end can be calculated. This Pop end makes the Pop start for a next period.
+
+## Cornell PAD implementation

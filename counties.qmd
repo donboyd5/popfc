@@ -1,0 +1,14 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Counties
+
+
+
+
+```{r stop_here, echo=FALSE}
+knitr::knit_exit()
+```

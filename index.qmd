@@ -1,0 +1,13 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Preface
+
+This project develops population forecasts for Washington County, NY and possibly towns within the county.
+
+
+```{r stop_here, echo=FALSE}
+knitr::knit_exit()

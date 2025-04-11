@@ -1,0 +1,15 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Links
+
+-   [Cornell county projections](https://pad.human.cornell.edu/counties/projections.cfm)
+-   [Cornell 2018 projection methodology](https://pad.human.cornell.edu/counties/downloads/2018Methodology.pdf)
+
+```{r stop_here, echo=FALSE}
+knitr::knit_exit()
+```
+

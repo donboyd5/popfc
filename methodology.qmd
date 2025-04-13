@@ -16,3 +16,18 @@ editor_options:
 -   Survivors age (end – start) years and thus a sex/age structure of Pop end can be calculated. This Pop end makes the Pop start for a next period.
 
 ## Cornell PAD implementation
+
+Start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder)
+URL: https://wonder.cdc.gov/Bridged-Race-v2017.HTML
+
+### Update
+
+That URL no longer works. The landing page is https://wonder.cdc.gov/bridged-race-population.html. It says:
+
+>Produced by the U.S. Census Bureau in collaboration with the National Center for Health Statistics (NCHS). Note: NCHS will cease releasing bridged-race population estimates after release of the bridged-race intercensal population estimates for July 1, 2010 - July 2019. With the release of the intercensal population estimates, the series will be discontinued.
+
+The page has a link to **1990 - 2020: By Year, State, County, Race (4-categories), Ethnicity, Sex and Age (1-year or 5-year groups).** It has a note that says:
+
+>The National Center for Health Statistics releases bridged-race population estimates of the July 1st resident population of the United States, for use in calculating vital rates. These estimates result from "bridging" the 31 race categories used in Census 2000, as specified in the 1997 Office of Management and Budget (OMB) standards for the collection of data on race and ethnicity, to the four race categories specified under the 1977 standards (Asian or Pacific Islander, Black or African American, American Indian or Alaska Native, White). Many data systems, such as vital statistics, are continuing to use the 1977 OMB standards during the transition to full implementation of the 1997 OMB standards....the Vintage 2020 postcensal series has estimates for July 1, 2010, July 1, 2011, July 1, 2012, July 1, 2013, July 1, 2014, July 1, 2015 July 1, 2016, July 1, 2017, July 1, 2018, July 1, 2019, and July 1, 2020.
+
+

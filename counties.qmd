@@ -6,8 +6,17 @@ editor_options:
 
 # Counties
 
+```{r}
+#| label: setup
+
+library(tidyverse)
+
+```
+
+```{r}
 
 
+```
 
 ```{r stop_here, echo=FALSE}
 knitr::knit_exit()

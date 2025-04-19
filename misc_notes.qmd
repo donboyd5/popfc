@@ -1,0 +1,10 @@
+---
+title: "misc_notes"
+format: html
+---
+
+## Cornell
+
+[Population](https://pad.human.cornell.edu/counties/trends1var.cfm?var=popestimate)
+
+![](images/clipboard-2799452640.png)

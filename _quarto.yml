@@ -18,6 +18,8 @@ book:
     - index.qmd
     - links.qmd
     - methodology.qmd
+    - counties.qmd
+    # - get-county-data.qmd
   # page-footer:
   #   center: "[Return to main MTA 2025 page](https://boyd-mta2025-links.netlify.app/)"      
 

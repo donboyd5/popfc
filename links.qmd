@@ -7,7 +7,23 @@ editor_options:
 # Links
 
 -   [Cornell county projections](https://pad.human.cornell.edu/counties/projections.cfm)
--   [Cornell 2018 projection methodology](https://pad.human.cornell.edu/counties/downloads/2018Methodology.pdf)p
+-   [Cornell 2018 projection methodology](https://pad.human.cornell.edu/counties/downloads/2018Methodology.pdf)
+-   [Cornell Washington County profile](https://pad.human.cornell.edu/counties/trends1geo.cfm?geo=115)
+-   [Cornell Washington County profile pdf](https://pad.human.cornell.edu/profiles/Washington.pdf)
+
+-   [Census Small Area Income and Poverty Estimates (SAIPE) Program](https://www.census.gov/programs-surveys/saipe.html)
+-   [SAIPE datasets](https://www.census.gov/programs-surveys/saipe/data/datasets.html)
+-   [SAIPE model inputs -- e.g., SNAP](https://www.census.gov/data/datasets/time-series/demo/saipe/model-tables.html)
+-   [SAIPE 2023 State and county estimates](https://www.census.gov/data/datasets/2023/demo/saipe/2023-state-and-county.html)
+
+-   [IRS Population migration data](https://www.irs.gov/statistics/soi-tax-stats-migration-data)
+-   [IRS County data](https://www.irs.gov/statistics/soi-tax-stats-county-data)
+-   [IRS Individual income tax ZIP Code data](https://www.irs.gov/statistics/soi-tax-stats-individual-income-tax-statistics-zip-code-data-soi)
+
+## NYS DOL
+
+-   [Annual Population Estimates for New York State and Counties: Beginning 1970](https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data)
+
 
 ```{r stop_here, echo=FALSE}
 knitr::knit_exit()

@@ -17,8 +17,7 @@ editor_options:
 
 ## Cornell PAD implementation
 
-Start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder)
-URL: https://wonder.cdc.gov/Bridged-Race-v2017.HTML
+Start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder) URL: https://wonder.cdc.gov/Bridged-Race-v2017.HTML
 
 ### Update
 
@@ -26,51 +25,14 @@ That URL no longer works. The new link is https://wonder.cdc.gov/bridged-race-v2
 
 The landing page is https://wonder.cdc.gov/bridged-race-population.html. It says:
 
->Produced by the U.S. Census Bureau in collaboration with the National Center for Health Statistics (NCHS). Note: NCHS will cease releasing bridged-race population estimates after release of the bridged-race intercensal population estimates for July 1, 2010 - July 2019. With the release of the intercensal population estimates, the series will be discontinued.
+> Produced by the U.S. Census Bureau in collaboration with the National Center for Health Statistics (NCHS). Note: NCHS will cease releasing bridged-race population estimates after release of the bridged-race intercensal population estimates for July 1, 2010 - July 2019. With the release of the intercensal population estimates, the series will be discontinued.
 
 The page has a link to **1990 - 2020: By Year, State, County, Race (4-categories), Ethnicity, Sex and Age (1-year or 5-year groups).** It has a note that says:
 
->The National Center for Health Statistics releases bridged-race population estimates of the July 1st resident population of the United States, for use in calculating vital rates. These estimates result from "bridging" the 31 race categories used in Census 2000, as specified in the 1997 Office of Management and Budget (OMB) standards for the collection of data on race and ethnicity, to the four race categories specified under the 1977 standards (Asian or Pacific Islander, Black or African American, American Indian or Alaska Native, White). Many data systems, such as vital statistics, are continuing to use the 1977 OMB standards during the transition to full implementation of the 1997 OMB standards....the Vintage 2020 postcensal series has estimates for July 1, 2010, July 1, 2011, July 1, 2012, July 1, 2013, July 1, 2014, July 1, 2015 July 1, 2016, July 1, 2017, July 1, 2018, July 1, 2019, and July 1, 2020.
+> The National Center for Health Statistics releases bridged-race population estimates of the July 1st resident population of the United States, for use in calculating vital rates. These estimates result from "bridging" the 31 race categories used in Census 2000, as specified in the 1997 Office of Management and Budget (OMB) standards for the collection of data on race and ethnicity, to the four race categories specified under the 1977 standards (Asian or Pacific Islander, Black or African American, American Indian or Alaska Native, White). Many data systems, such as vital statistics, are continuing to use the 1977 OMB standards during the transition to full implementation of the 1997 OMB standards....the Vintage 2020 postcensal series has estimates for July 1, 2010, July 1, 2011, July 1, 2012, July 1, 2013, July 1, 2014, July 1, 2015 July 1, 2016, July 1, 2017, July 1, 2018, July 1, 2019, and July 1, 2020.
 
-I requested the following data for Washington County through the CDC menu. I saved the result as "Bridged-Race Population Estimates 1990-2020 _WashingtonCounty.txt" in the data folder.
+I requested the following data for Washington County through the CDC menu. I saved the result as "Bridged-Race Population Estimates 1990-2020 \_WashingtonCounty.txt" in the data folder.
 
 Here is the documentation from the request:
 
->"Dataset: Bridged-Race Population Estimates 1990-2020"
-"Query Parameters:"
-"States: Washington County, NY (36115)"
-"Group By: Yearly July 1st Estimates; Sex; Age"
-"Show Totals: True"
-"Show Zero Values: True"
-"Data Table: County Level"
-"---"
-"Help: See http://wonder.cdc.gov/wonder/help/bridged-race.html for more information."
-"---"
-"Query Date: Apr 13, 2025 1:47:08 PM"
-"---"
-"Suggested Citation: United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention"
-"(CDC), National Center for Health Statistics (NCHS), Bridged-Race Population Estimates, United States July 1st resident"
-"population by state, county, age, sex, bridged-race, and Hispanic origin. Compiled from 1990-1999 bridged-race intercensal"
-"population estimates (released by NCHS on 7/26/2004); revised bridged-race 2000-2009 intercensal population estimates (released"
-"by NCHS on 10/26/2012); and bridged-race Vintage 2020 (2010-2020) postcensal population estimates (released by NCHS on"
-"9/22/2021). Available on CDC WONDER Online Database. Accessed at http://wonder.cdc.gov/bridged-race-v2020.html on Apr 13, 2025"
-"1:47:08 PM"
-"---"
-Footnotes:
-"1. Estimates for 1990-1999 are bridged-race intercensal population estimates of the July 1 resident population. Estimates for"
-"2000-2009 are revised bridged-race intercensal estimates of the July 1 resident population. Estimates for 2010-2020 are"
-"bridged-race Vintage 2020 postcensal estimates of the July 1 resident population. These estimates were prepared by the Census"
-"Bureau in collaboration with NCHS."
-"---"
-Caveats:
-"1. County geography changes over time. New counties are created and old counties are deleted or their boundaries are modified."
-"The county codes and names for years 1990-1999 are based on Census 2000 geography; those for year 2000 and later are based on"
-"Census 2010 geography."
-"2. The U.S. Census Bureau annually releases unbridged population estimates for five-year age groups and race at the county level"
-"(http://www.census.gov/popest/research/eval-estimates/eval-est2010.html). The Census Bureau does not release bridged-race or"
-"unbridged estimates by single year of age at the county level due to concerns about the reliability of these estimates. However,"
-"these estimates are provided to the National Center for Health Statistics to meet programmatic needs such as the creation of age"
-"groupings that differ from the standard groupings used by the Census Bureau. Users of the single-year-of-age county-level"
-"bridged race population estimates should carefully consider the limited reliability of these estimates."
-
-
+> "Dataset: Bridged-Race Population Estimates 1990-2020" "Query Parameters:" "States: Washington County, NY (36115)" "Group By: Yearly July 1st Estimates; Sex; Age" "Show Totals: True" "Show Zero Values: True" "Data Table: County Level" "---" "Help: See http://wonder.cdc.gov/wonder/help/bridged-race.html for more information." "---" "Query Date: Apr 13, 2025 1:47:08 PM" "---" "Suggested Citation: United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention" "(CDC), National Center for Health Statistics (NCHS), Bridged-Race Population Estimates, United States July 1st resident" "population by state, county, age, sex, bridged-race, and Hispanic origin. Compiled from 1990-1999 bridged-race intercensal" "population estimates (released by NCHS on 7/26/2004); revised bridged-race 2000-2009 intercensal population estimates (released" "by NCHS on 10/26/2012); and bridged-race Vintage 2020 (2010-2020) postcensal population estimates (released by NCHS on" "9/22/2021). Available on CDC WONDER Online Database. Accessed at http://wonder.cdc.gov/bridged-race-v2020.html on Apr 13, 2025" "1:47:08 PM" "---" Footnotes: "1. Estimates for 1990-1999 are bridged-race intercensal population estimates of the July 1 resident population. Estimates for" "2000-2009 are revised bridged-race intercensal estimates of the July 1 resident population. Estimates for 2010-2020 are" "bridged-race Vintage 2020 postcensal estimates of the July 1 resident population. These estimates were prepared by the Census" "Bureau in collaboration with NCHS." "---" Caveats: "1. County geography changes over time. New counties are created and old counties are deleted or their boundaries are modified." "The county codes and names for years 1990-1999 are based on Census 2000 geography; those for year 2000 and later are based on" "Census 2010 geography." "2. The U.S. Census Bureau annually releases unbridged population estimates for five-year age groups and race at the county level" "(http://www.census.gov/popest/research/eval-estimates/eval-est2010.html). The Census Bureau does not release bridged-race or" "unbridged estimates by single year of age at the county level due to concerns about the reliability of these estimates. However," "these estimates are provided to the National Center for Health Statistics to meet programmatic needs such as the creation of age" "groupings that differ from the standard groupings used by the Census Bureau. Users of the single-year-of-age county-level" "bridged race population estimates should carefully consider the limited reliability of these estimates."

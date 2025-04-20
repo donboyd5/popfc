@@ -17,7 +17,7 @@ library(skimr)
 library(Hmisc)
 library(btools)
 
-ns(options())
+# ns(options())
 
 dnysdol <- here::here("data", "nysdol")
 dnysdoh <- here::here("data", "nysdoh")
@@ -31,21 +31,42 @@ https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-
 
 
 ```{r}
+#| label: get-county-pop
+
+# https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
+
+# export / api endpoint / csv / copy:
+# https://data.ny.gov/resource/krt9-ym2k.csv
+# add the limit:
+urlbase <- "https://data.ny.gov/resource/krt9-ym2k.csv"
+limit <- 50000 # 50k max
+url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with quotes, that's ok
+fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+download.file(url, fs::path(dnysdol, fname))
+
+```
+
+```{r}
+#| label: read-county-pop
 
 
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
+fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+
 fpath <- fs::path(dnysdol, fname)
 
 df <- vroom(fpath, col_types="ccicn")
 glimpse(df)
+summary(df) # 1970-2023
+
 df1 <- df |> 
   select(fips=1, area=2, year=3, program=4, pop=5) |> 
   mutate(cocode = str_sub(fips, 3, -1))
 
-cocodes <- count(df1, fips, cocode, name)
+cocodes <- count(df1, fips, cocode, area)
 
 # 091, 113 115
-codes <- c("091", "113", "115")
+codes <- c("083", "091", "113", "115")
 
 df1 |> 
   filter(cocode %in% codes) |> 
@@ -54,10 +75,31 @@ df1 |>
   geom_point() +
   facet_wrap(~cocode + area, scales = "free_y")
 
+baseyear <- 2010
+df1 |> 
+  filter(cocode %in% codes, year >= baseyear) |> 
+  mutate(ipop = pop / pop[year == baseyear] - 1, .by=cocode) |> 
+  ggplot(aes(year, ipop, colour=area)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(breaks = seq(-.2, .2, .02), 
+                     labels = scales::label_percent())
+
 
 ```
 
+
 ## Census Components of Change
+
+https://www.census.gov/programs-surveys/popest.html
+https://www.census.gov/programs-surveys/popest/data/data-sets.html
+
+https://www.census.gov/programs-surveys/international-programs/events/training/select-topics-in-international-population-health/demographic-change.html
+
+### 2010-2019
+
+https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.html
 
 ```{r}
 
@@ -101,6 +143,17 @@ tmp |>
   scale_x_continuous(breaks = 2010:2020) +
   scale_y_continuous(breaks = seq(-.01, .02, .002), labels = scales::label_percent()) +
   ggtitle("Change in population by cause as % of starting (?) population")
+
+```
+
+
+### 2020-2024
+
+https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html
+
+
+```{r}
+
 
 ```
 

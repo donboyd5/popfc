@@ -3,6 +3,9 @@
 .RData
 .Ruserdata
 
+# ignore data until we really know what we need
+data/
+
 /.quarto/
 _freeze/
 _web/

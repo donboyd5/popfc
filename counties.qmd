@@ -6,6 +6,9 @@ editor_options:
 
 # Counties
 
+https://www2.census.gov/programs-surveys/popest/datasets/
+
+
 ```{r}
 #| label: setup
 
@@ -21,7 +24,7 @@ library(btools)
 
 dnysdol <- here::here("data", "nysdol")
 dnysdoh <- here::here("data", "nysdoh")
-dcoc <- here::here("data", "census", "components")
+dcenpop <- here::here("data", "census", "levels_components")
 
 ```
 
@@ -34,6 +37,7 @@ https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-
 #| label: get-county-pop
 
 # https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
+# https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD
 
 # export / api endpoint / csv / copy:
 # https://data.ny.gov/resource/krt9-ym2k.csv
@@ -41,6 +45,11 @@ https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-
 urlbase <- "https://data.ny.gov/resource/krt9-ym2k.csv"
 limit <- 50000 # 50k max
 url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with quotes, that's ok
+
+# alternative link to the data found via U.S. data.gov
+# https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
+# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD" 
+
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
 download.file(url, fs::path(dnysdol, fname))
 
@@ -86,6 +95,11 @@ df1 |>
   scale_y_continuous(breaks = seq(-.2, .2, .02), 
                      labels = scales::label_percent())
 
+df1 |> 
+  filter(cocode=="115") |> 
+  arrange(year) |> 
+  tail()
+
 
 ```
 
@@ -106,7 +120,7 @@ https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.
 # https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf
 
 fname <- "co-est2019-alldata.csv"
-fpath <- fs::path(dcoc, fname)
+fpath <- fs::path(dcenpop, fname)
 
 # the rate variables must be per thousand I think
 
@@ -150,9 +164,15 @@ tmp |>
 ### 2020-2024
 
 https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html
-
+https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx
+https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
 
 ```{r}
+
+# url <- "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx"
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
+fname <- fs::path_file(url)
+download.file(url, fs::path(dcenpop, fname), mode="wb")
 
 
 ```

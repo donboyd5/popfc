@@ -29,8 +29,8 @@ format:
     theme: cosmo
     code-fold: true
     number-depth: 5
-    toc-depth: 5
-    toc-expand: false
+    toc-depth: 4
+    toc-expand: true
 
 editor_options:
   chunk_output_type: console

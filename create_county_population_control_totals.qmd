@@ -12,14 +12,17 @@ https://www2.census.gov/programs-surveys/popest/datasets/
 #| label: setup
 
 libs <- function(){
-library(tidyverse)
-library(readxl)
-library(vroom)
-library(fs)
-library(skimr)
-library(Hmisc)
-library(btools)
+  library(tidyverse)
+  library(readxl)
+  library(vroom)
+  library(fs)
+  library(skimr)
+  library(Hmisc)
+  library(btools)
+}
 
+suppressPackageStartupMessages(libs())
+  
 # ns(options())
 
 dnysdol <- here::here("data", "nysdol")
@@ -32,16 +35,16 @@ dcenpop <- here::here("data", "census") # levels_components, totals
 
 For each dataset:
 
-- download (optionally)
-- read
-- clean as needed
-- save cleaned file
+-   download (optionally)
+-   read
+-   clean as needed
+-   save cleaned file
 
 ## Census Bureau Population Estimates Program -- data obtained directly from Census
 
 ### Intercensal estimates
 
-### download-intercensal-estimates
+#### download-intercensal-estimates
 
 ```{r}
 #| label: download-intercensal-estimates
@@ -117,13 +120,14 @@ download.file(url, fs::path(dir, fname), mode="wb")
 # https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv
 # sub-est2023.csv postcensal 2020-2023 states, counties, cities, towns, villages totals (not coc)
 
-
 ```
 
-## download postcensal estimates
+### Postcensal estimates
+
+#### download postcensal estimates
 
 ```{r}
-#| label: postcensal
+#| label: download-postcensal-estimates
 #| eval: false
 
 # cities, villages, and towns
@@ -133,20 +137,22 @@ download.file(url, fs::path(dir, fname), mode="wb")
 
 ## NYSDOL: Annual population Census Population Estimates Program via data.ny.gov
 
-NYS gets annual estimates from the Census Bureau. The 2025-04-20 version has county population totals for 1970-2023. The data may be slightly behind what Census has currently.
+NYS Department of Labor gets annual estimates from the Census Bureau. The data may be slightly behind what Census has currently. The [data are on data.ny.gov](https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data).
 
-The data look like this:
+The 2025-04-20 version has county population totals for 1970-2023. The data include Census base, intercensal, and postcensal estimates. Here are counts:
 
-![](images/paste-2.png)
+![](images/paste-1.png)
 
-There are 62 counties – 5 NYC counties, 57 counties, and a New York State total.
+There are 62 counties in the data – 5 NYC counties, 57 counties, and a New York State total. Units are numbers of people (not thousands).
 
-https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
+The raw data look like this:
 
-## get-nysdol-county-pop
+![](images/paste-3.png)
+
+### Download NYSDOL county pop
 
 ```{r}
-#| label: get-nysdol-county-pop
+#| label: download-nysdol-county-pop
 #| eval: false
 
 # https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
@@ -168,6 +174,8 @@ download.file(url, fs::path(dnysdol, fname))
 
 ```
 
+### Read NYSDOL county pop
+
 ```{r}
 #| label: read-county-pop
 
@@ -183,6 +191,14 @@ summary(df) # 1970-2023
 df1 <- df |> 
   select(fips=1, area=2, year=3, program=4, pop=5) |> 
   mutate(cocode = str_sub(fips, 3, -1))
+count(df1, program)
+
+```
+
+
+```{r}
+#| label: explore-nysdol-population
+#| output: true
 
 cocodes <- count(df1, fips, cocode, area)
 
@@ -212,8 +228,13 @@ df1 |>
   arrange(year) |> 
   tail()
 
-
 ```
+
+
+
+### Explore NYSDOL county pop
+
+### Save NYSDOL county pop
 
 ## Census Components of Change
 
@@ -227,6 +248,7 @@ https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.
 
 ```{r}
 #| label: 2010-2019-coc
+#| eval: false
 
 # https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf
 
@@ -277,6 +299,7 @@ https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-tota
 
 ```{r}
 #| label: 2020-2024-coc
+#| eval: false
 
 # url <- "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx"
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
@@ -293,6 +316,8 @@ https://health.data.ny.gov/Health/New-York-State-Population-Data-Beginning-2003/
 > Population data file is provided as an additional reference file when interpreting vital statistics death rates. The population data is derived from the corresponding release of the NCHS annual estimates of "Bridged Race Vintage" which are consistent with the Bureau of the Census estimates from "Vintage" (released in the summer). For more information, check out: http://www.health.ny.gov/statistics/vital_statistics/. The "About" tab contains additional details concerning this dataset.
 
 ```{r}
+#| label: nysdoh
+#| eval: false
 
 fname <- "New_York_State_Population_Data__Beginning_2003_20250419.csv"
 fpath <- fs::path(dnysdoh, fname)
@@ -375,9 +400,6 @@ df3 |>
 
 ```
 
-```{r}
-
-```
 
 ## Local Area Unemployment Statistics: Beginning 1990 (data documentation says 1976)
 
@@ -386,6 +408,8 @@ https://data.ny.gov/Economic-Development/County-Employment-Data/4v74-29eq/about_
 Needs seasonal adjustment
 
 ```{r}
+#| label: laus
+#| eval: false
 
 url <- "https://data.ny.gov/api/odata/v4/4v74-29eq"
 url <- "https://data.ny.gov/d/4v74-29eq"
@@ -438,6 +462,9 @@ df1 |>
 ## QCEW
 
 ```{r}
+#| label: qcew
+#| eval: false
+
 # https://statistics.labor.ny.gov/qcew.zip
 
 
@@ -448,6 +475,8 @@ df1 |>
 https://dol.ny.gov/long-term-occupational-projections https://data.ny.gov/Economic-Development/Long-Term-Occupational-Projections/pqm4-9qqb/about_data https://data.ny.gov/Economic-Development/Long-term-Industry-Projections/b7d6-zygf/about_data
 
 ```{r}
+#| label: nysdol-occind-proj
+#| eval: false
 
 # https://dol.ny.gov/long-term-occupational-projections
 # https://data.ny.gov/Economic-Development/Long-Term-Occupational-Projections/pqm4-9qqb/about_data

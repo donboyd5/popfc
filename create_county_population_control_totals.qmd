@@ -4,7 +4,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-## Create County Population Control Totals
+# Create County Population Control Totals
 
 https://www2.census.gov/programs-surveys/popest/datasets/
 
@@ -25,13 +25,19 @@ suppressPackageStartupMessages(libs())
   
 # ns(options())
 
-dnysdol <- here::here("data", "nysdol")
-dnysdoh <- here::here("data", "nysdoh")
-dcenpop <- here::here("data", "census") # levels_components, totals
+DRAW <- here::here("data_raw")
+DDATA <- here::here("data")
+
+DNYSDOL <- here::here(DRAW, "nysdol")
+DNYSDOH <- here::here(DRAW, "nysdoh")
+DCENPOP <- here::here(DRAW, "census") # levels_components, totals
 
 ```
 
-# Prepare datasets
+Key datasets:
+
+- NYSDOL annual population - county population totals 1970-recent, all in one place, but not as current as Census Bureau. We get this first because its all-in-one-place data is convenient.
+- Census population estimates program - population totals
 
 For each dataset:
 
@@ -39,6 +45,129 @@ For each dataset:
 -   read
 -   clean as needed
 -   save cleaned file
+
+## NYSDOL: Annual population Census Population Estimates Program via data.ny.gov
+
+NYS Department of Labor gets annual estimates from the Census Bureau. The data may be slightly behind what Census has currently. The [data are on data.ny.gov](https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data).
+
+The 2025-04-20 version has county population totals for 1970-2023. The data include Census base, intercensal, and postcensal estimates. Here are counts:
+
+![](images/paste-1.png)
+
+There are 62 counties in the data – 5 NYC counties, 57 counties, and a New York State total. Units are numbers of people (not thousands).
+
+The raw data look like this:
+
+![](images/paste-3.png)
+
+### Download NYSDOL county pop
+
+```{r}
+#| label: download-nysdol-county-pop
+#| eval: false
+
+# https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
+# https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD
+
+# export / api endpoint / csv / copy:
+# https://data.ny.gov/resource/krt9-ym2k.csv
+# add the limit:
+urlbase <- "https://data.ny.gov/resource/krt9-ym2k.csv"
+limit <- 50000 # 50k max
+url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with quotes, that's ok
+
+# alternative link to the data found via U.S. data.gov
+# https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
+# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD" 
+
+fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+download.file(url, fs::path(DNYSDOL, fname))
+
+```
+
+### Read NYSDOL county pop
+
+```{r}
+#| label: read-county-pop
+
+# fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
+fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+
+fpath <- fs::path(DNYSDOL, fname)
+
+df <- vroom(fpath, col_types="ccicn")
+glimpse(df)
+summary(df) # 1970-2023
+
+df1 <- df |> 
+  select(fips=1, area=2, year=3, program=4, pop=5) |> 
+  mutate(cocode = str_sub(fips, 3, -1))
+count(df1, program)
+
+df2 <- df1 |> 
+  mutate(area = str_remove(area, " County"),
+    program = case_when(str_detect(program, "Census Base") ~ "censusbase",
+                        str_detect(program, "Intercensal") ~ "intercensal",
+                        str_detect(program, "Postcensal") ~ "postcensal",
+                        .default = "ERROR")) |> 
+  select(year, fips, cocode, area, program, pop)
+    
+glimpse(df2)
+count(df2, area)
+count(df2, cocode, area)
+count(df2, program)
+count(df2, year) |> ht()
+
+```
+
+
+### Explore NYSDOL county pop
+
+```{r}
+#| label: explore-nysdol-population
+#| output: true
+
+cocodes <- count(df1, fips, cocode, area)
+
+# 091, 113 115
+codes <- c("083", "091", "113", "115")
+
+df2 |> 
+  filter(cocode %in% codes) |> 
+  ggplot(aes(year, pop)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~cocode + area, scales = "free_y")
+
+baseyear <- 2010
+df1 |> 
+  filter(cocode %in% codes, year >= baseyear) |> 
+  mutate(ipop = pop / pop[year == baseyear] - 1, .by=cocode) |> 
+  ggplot(aes(year, ipop, colour=area)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(breaks = seq(-.2, .2, .02), 
+                     labels = scales::label_percent())
+
+df2 |> 
+  filter(cocode=="115") |> 
+  arrange(year) |> 
+  tail()
+
+```
+
+
+### Save NYSDOL county pop
+
+```{r}
+#| label: save-nysdol
+
+saveRDS(df2, fs::path(DDATA, "cenpop_nysdol.rds"))
+
+
+
+```
 
 ## Census Bureau Population Estimates Program -- data obtained directly from Census
 
@@ -135,107 +264,6 @@ download.file(url, fs::path(dir, fname), mode="wb")
 
 ```
 
-## NYSDOL: Annual population Census Population Estimates Program via data.ny.gov
-
-NYS Department of Labor gets annual estimates from the Census Bureau. The data may be slightly behind what Census has currently. The [data are on data.ny.gov](https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data).
-
-The 2025-04-20 version has county population totals for 1970-2023. The data include Census base, intercensal, and postcensal estimates. Here are counts:
-
-![](images/paste-1.png)
-
-There are 62 counties in the data – 5 NYC counties, 57 counties, and a New York State total. Units are numbers of people (not thousands).
-
-The raw data look like this:
-
-![](images/paste-3.png)
-
-### Download NYSDOL county pop
-
-```{r}
-#| label: download-nysdol-county-pop
-#| eval: false
-
-# https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
-# https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD
-
-# export / api endpoint / csv / copy:
-# https://data.ny.gov/resource/krt9-ym2k.csv
-# add the limit:
-urlbase <- "https://data.ny.gov/resource/krt9-ym2k.csv"
-limit <- 50000 # 50k max
-url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with quotes, that's ok
-
-# alternative link to the data found via U.S. data.gov
-# https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
-# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD" 
-
-fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
-download.file(url, fs::path(dnysdol, fname))
-
-```
-
-### Read NYSDOL county pop
-
-```{r}
-#| label: read-county-pop
-
-# fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
-fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
-
-fpath <- fs::path(dnysdol, fname)
-
-df <- vroom(fpath, col_types="ccicn")
-glimpse(df)
-summary(df) # 1970-2023
-
-df1 <- df |> 
-  select(fips=1, area=2, year=3, program=4, pop=5) |> 
-  mutate(cocode = str_sub(fips, 3, -1))
-count(df1, program)
-
-```
-
-
-```{r}
-#| label: explore-nysdol-population
-#| output: true
-
-cocodes <- count(df1, fips, cocode, area)
-
-# 091, 113 115
-codes <- c("083", "091", "113", "115")
-
-df1 |> 
-  filter(cocode %in% codes) |> 
-  ggplot(aes(year, pop)) +
-  geom_line() +
-  geom_point() +
-  facet_wrap(~cocode + area, scales = "free_y")
-
-baseyear <- 2010
-df1 |> 
-  filter(cocode %in% codes, year >= baseyear) |> 
-  mutate(ipop = pop / pop[year == baseyear] - 1, .by=cocode) |> 
-  ggplot(aes(year, ipop, colour=area)) +
-  geom_line() +
-  geom_point() +
-  geom_hline(yintercept = 0) +
-  scale_y_continuous(breaks = seq(-.2, .2, .02), 
-                     labels = scales::label_percent())
-
-df1 |> 
-  filter(cocode=="115") |> 
-  arrange(year) |> 
-  tail()
-
-```
-
-
-
-### Explore NYSDOL county pop
-
-### Save NYSDOL county pop
-
 ## Census Components of Change
 
 https://www.census.gov/programs-surveys/popest.html https://www.census.gov/programs-surveys/popest/data/data-sets.html
@@ -307,6 +335,12 @@ fname <- fs::path_file(url)
 download.file(url, fs::path(dcenpop, fname), mode="wb")
 
 
+```
+
+
+```{r stop_here, echo=FALSE}
+#| label: stop
+knitr::knit_exit()
 ```
 
 ## NYS DOH New York State Population Data: Beginning 2003 -- age group, gender, race/ethnicity counties by year
@@ -459,6 +493,7 @@ df1 |>
 
 ```
 
+
 ## QCEW
 
 ```{r}
@@ -484,6 +519,3 @@ https://dol.ny.gov/long-term-occupational-projections https://data.ny.gov/Econom
 
 ```
 
-```{r stop_here, echo=FALSE}
-knitr::knit_exit()
-```

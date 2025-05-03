@@ -11,6 +11,7 @@ https://www2.census.gov/programs-surveys/popest/datasets/
 ```{r}
 #| label: setup
 
+libs <- function(){
 library(tidyverse)
 library(readxl)
 library(vroom)

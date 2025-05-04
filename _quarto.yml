@@ -34,6 +34,11 @@ format:
 
 editor_options:
   chunk_output_type: console
+
+# editor:
+#   markdown:
+#     wrap: 72
+#     canonical: true
   
 # ```{r stop_here, echo=FALSE}
 # knitr::knit_exit()

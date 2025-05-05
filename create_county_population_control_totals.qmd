@@ -31,6 +31,7 @@ suppressPackageStartupMessages(libs())
 
 DRAW <- here::here("data_raw")
 DDATA <- here::here("data")
+DWORK <- here::here("data_work")
 
 DNYSDOL <- here::here(DRAW, "nysdol")
 DNYSDOH <- here::here(DRAW, "nysdoh")
@@ -53,6 +54,8 @@ For each dataset:
 -   save cleaned file
 
 ## NYSDOL: Annual population Census Population Estimates Program via data.ny.gov
+
+**Only run chunks in this section when NYS DOL population data have been updated**
 
 NYS Department of Labor gets annual estimates from the Census Bureau.
 The data may be slightly behind what Census has currently. The [data are
@@ -92,7 +95,9 @@ url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with qu
 # https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
 # url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD" 
 
-fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+fname_base <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970"
+fname <- paste0(fname_base, "_", format(today(), "%Y%m%d"), ".csv") # use same date formatting as data.ny.gov
+fname
 download.file(url, fs::path(DNYSDOL, fname))
 
 ```
@@ -101,6 +106,7 @@ download.file(url, fs::path(DNYSDOL, fname))
 
 ```{r}
 #| label: read-county-pop
+#| eval: false
 
 # fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
@@ -179,6 +185,77 @@ saveRDS(df2, fs::path(DDATA, "cenpop_nysdol.rds"))
 
 ## Census Bureau Population Estimates Program -- data obtained directly from Census
 
+### Postcensal estimates
+
+#### download postcensal estimates
+
+```{r}
+#| label: download-postcensal-estimates
+#| eval: false
+
+# 2020-plus ----
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
+# co-est2024-alldata.csv postcensal 2020-2024 states and counties totals and components of change
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-alldata.csv
+# cc-est2023-alldata.csv cc- not co-... postcensal needs docs 2020-2023?, year, county, age group, sex, race/h; presumably 2024 will be available
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-syasex-36.csv
+# cc-est2023-syasex-36.csv cc- not co- ... NY county 2020-2023?, year, county, single-year age, 
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv
+# sub-est2023.csv postcensal 2020-2023 states, counties, cities, towns, villages totals (not coc)
+
+
+# cities, villages, and towns
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/
+
+```
+
+
+#### read-clean-save-postcensal
+
+```{r}
+#| label: read-clean-save-postcensal
+#| eval: false
+
+# start with most recent, work backward
+# fname <- "co-est2020.csv"
+# fname <- "co-est2020-alldata.csv"
+fname <- "co-est2024-alldata.csv"
+fpath <- fs::path(DRAW, "census", "2020-plus", fname)
+
+df <- vroom::vroom(fpath)
+problems(df) # Alaska Chugach Census Area and Copper River Census Area Census 2010 pop is missing
+glimpse(df)
+
+df2 <- df |> 
+  rename_with(tolower) |> 
+  pivot_longer(-c(sumlev:ctyname)) |> 
+  mutate(year = str_sub(name, -4),
+         variable = str_sub(name, 1, -5)) |> 
+  select(-name)
+
+glimpse(df2)
+count(df2, year)
+count(df2, variable)
+# tmp <- count(df2, name)
+
+df3 <- df2 |> 
+  mutate(
+    rectype = ifelse(county == "000", "state", "county"),
+    ctyname = str_remove(stname, " County")) |> 
+  select(
+    year,
+    rectype,
+    stfips = state, cofips = county,
+    stname, coname = ctyname,
+    variable, value)
+
+saveRDS(df3, fs::path(DWORK, "cenpop_postcensal.rds"))
+
+```
+
 ### Intercensal estimates
 
 #### download-intercensal-estimates
@@ -244,19 +321,6 @@ download.file(url, fs::path(dir, fname), mode="wb")
 # https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/intercensal/cities/
 # sub-est2020int.csv intercensal state county city town village (no coc)
 
-# 2020-plus ----
-# https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
-# co-est2024-alldata.csv postcensal 2020-2024 states and counties totals and components of change
-
-# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-alldata.csv
-# cc-est2023-alldata.csv cc- not co-... postcensal needs docs 2020-2023?, year, county, age group, sex, race/h; presumably 2024 will be available
-
-# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-syasex-36.csv
-# cc-est2023-syasex-36.csv cc- not co- ... NY county 2020-2023?, year, county, single-year age, 
-
-# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv
-# sub-est2023.csv postcensal 2020-2023 states, counties, cities, towns, villages totals (not coc)
-
 ```
 
 ```{r}
@@ -272,19 +336,6 @@ problems(df) # Alaska Chugach Census Area and Copper River Census Area Census 20
 
 glimpse(df)
 
-
-```
-
-### Postcensal estimates
-
-#### download postcensal estimates
-
-```{r}
-#| label: download-postcensal-estimates
-#| eval: false
-
-# cities, villages, and towns
-# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/
 
 ```
 

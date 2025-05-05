@@ -3,10 +3,15 @@
 .RData
 .Ruserdata
 
-# ignore data until we really know what we need
-data/
-
+# ignore folders
 /.quarto/
 _freeze/
 _web/
 create_county_population_control_totals_files/
+
+#.. ignore data until we really know what we need
+data/
+
+# ignore file types
+*.rds
+

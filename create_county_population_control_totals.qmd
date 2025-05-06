@@ -20,6 +20,7 @@ libs <- function() {
   library(fs)
   library(skimr)
   library(Hmisc)
+  library(gt)
   library(btools)
 }
 
@@ -186,7 +187,9 @@ df |>
 df |>
   filter(cocode == "115") |>
   arrange(year) |>
-  tail()
+  tail() |>
+  gt() |>
+  tab_header("Final few records from the data file")
 ```
 
 ## Census Bureau Population Estimates Program -- data obtained directly from Census
@@ -246,7 +249,10 @@ glimpse(df)
 df2 <- df |>
   rename_with(tolower) |>
   pivot_longer(-c(sumlev:ctyname)) |>
-  mutate(year = str_sub(name, -4), variable = str_sub(name, 1, -5)) |>
+  mutate(
+    year = str_sub(name, -4),
+    variable = str_sub(name, 1, -5)
+  ) |>
   select(-name)
 
 glimpse(df2)
@@ -256,8 +262,9 @@ count(df2, variable)
 
 df3 <- df2 |>
   mutate(
+    year = as.integer(year),
     rectype = ifelse(county == "000", "state", "county"),
-    ctyname = str_remove(stname, " County")
+    ctyname = str_remove(ctyname, " County")
   ) |>
   select(
     year,
@@ -271,6 +278,31 @@ df3 <- df2 |>
   )
 
 saveRDS(df3, fs::path(DWORK, "cenpop_postcensal.rds"))
+
+```
+
+#### Explore postcensal data
+
+```{r}
+#| label: explore-postcensal
+#| output: true
+
+df <- readRDS(fs::path(DWORK, "cenpop_postcensal.rds"))
+# glimpse(df)
+# count(df, coname)
+
+df |>
+  filter(
+    rectype == "county",
+    stfips == "36",
+    cofips == "115",
+    variable == "popestimate"
+  ) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(breaks = seq(50e3, 70e3, 100)) +
+  ggtitle("Washington County, NY postcensal population")
 
 ```
 

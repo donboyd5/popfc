@@ -387,9 +387,55 @@ df <- vroom::vroom(fpath)
 problems(df) # Alaska Chugach Census Area and Copper River Census Area Census 2010 pop is missing
 
 glimpse(df)
+ns(df)
 
+df2 <- df |>
+  rename_with(tolower) |>
+  pivot_longer(-c(sumlev:ctyname)) |>
+  mutate(
+    rectype = ifelse(sumlev == "040", "state", "county"),
+    name = str_replace(name, "pop$", ""), # replace "pop" if it appears at the end ($)
+    year = str_sub(name, -4),
+    variable = str_sub(name, 1, -5),
+    variable = str_replace(variable, "_$", ""),
+    variable = ifelse(variable == "census", "decennial", variable)
+  ) |>
+  select(-name)
+count(df2, rectype)
+count(df2, year)
+count(df2, variable)
+
+glimpse(df2)
+count(df2, year)
+count(df2, variable)
+# tmp <- count(df2, name)
+
+df3 <- df2 |>
+  mutate(
+    year = as.integer(year),
+    ctyname = str_remove(ctyname, " County")
+  ) |>
+  select(
+    year,
+    rectype,
+    stfips = state,
+    cofips = county,
+    stname,
+    coname = ctyname,
+    variable,
+    value
+  )
+
+saveRDS(df3, fs::path(DWORK, "cenpop_2010to2020.rds"))
 
 ```
+
+### Combine intercensal and postcensal overlap
+
+
+## Compare Census Bureau totals with NYSDOL totals
+
+
 
 ## Census Components of Change
 

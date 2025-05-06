@@ -1,10 +1,21 @@
 project:
   type: book
   output-dir: _web
+
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    number-depth: 5
+    toc-depth: 4
+    toc-expand: true
+
+editor_options:
+  chunk_output_type: console  
   
 execute:
   eval: true
-  echo: false
+  echo: true # must be true for code folding to work
   output: false
   freeze: auto  # auto, true, or false
 
@@ -24,16 +35,7 @@ book:
   # page-footer:
   #   center: "[Return to main MTA 2025 page](https://boyd-mta2025-links.netlify.app/)"      
 
-format:
-  html:
-    theme: cosmo
-    code-fold: true
-    number-depth: 5
-    toc-depth: 4
-    toc-expand: true
 
-editor_options:
-  chunk_output_type: console
 
 # editor:
 #   markdown:

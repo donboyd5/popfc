@@ -372,12 +372,14 @@ download.file(url, fs::path(dir, fname), mode = "wb")
 
 ```
 
+#### Read, clean, and save intercensal data
+
 ```{r}
-#| label: read-clean-intercensal
+#| label: read-clean-save-intercensal
 #| eval: false
 
 # start with most recent, work backward
-fname <- "co-est2020.csv"
+# fname <- "co-est2020.csv"
 fname <- "co-est2020-alldata.csv"
 fpath <- fs::path(DRAW, "census", "2010-2020", fname)
 
@@ -396,7 +398,7 @@ https://www.census.gov/programs-surveys/popest/data/data-sets.html
 
 https://www.census.gov/programs-surveys/international-programs/events/training/select-topics-in-international-population-health/demographic-change.html
 
-### 2010-2019
+### DON'T USE THIS YET -- 2010-2019
 
 https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.html
 

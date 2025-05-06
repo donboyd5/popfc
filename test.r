@@ -29,3 +29,8 @@ print(DRAW)
 x <- 10 # alt+-
 
 # new section ctrl+k h ---------------------------------------------------
+
+# test how ark formatting works
+data |>
+  ggplot(aes(x, y)) +
+  geom_point()

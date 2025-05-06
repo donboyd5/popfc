@@ -263,7 +263,7 @@ count(df2, variable)
 df3 <- df2 |>
   mutate(
     year = as.integer(year),
-    rectype = ifelse(county == "000", "state", "county"),
+    rectype = ifelse(sumlev == "040", "state", "county"),
     ctyname = str_remove(ctyname, " County")
   ) |>
   select(

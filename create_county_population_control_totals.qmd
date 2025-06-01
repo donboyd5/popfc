@@ -491,9 +491,60 @@ stack |>
   geom_point()
 # Wow - almost no shift for Wash Co; big shift for Albany
 
+stack |>
+  filter(
+    rectype == "county",
+    program %in% c("intercensal", "postcensal"),
+    cofips == cnty
+  ) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
 ```
 
+## Save stacked file as control
 
+```{r}
+
+glimpse(stack)
+stack2 <- stack |>
+  filter(program %in% c("intercensal", "postcensal")) |>
+  filter(src == "nysdol" & year < 2020 | src == "census" & year >= 2020)
+
+albco <- "001"
+washco <- "115"
+cnty <- albco
+cnty <- washco
+
+
+stack2 |>
+  filter(rectype == "county", cofips == cnty) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "county", cofips == cnty) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "state") |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "state") |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point()
+
+saveRDS(stack2, fs::path(DDATA, "pop_control.rds"))
+
+```
 
 ## Census Components of Change
 

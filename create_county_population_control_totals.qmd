@@ -198,7 +198,7 @@ df |>
 
 #### download postcensal estimates
 
-The latest file (5/6/2025) with county totals is
+The latest file (website date 3/13/2025, downloaded 5/6/2025) with county totals is
 `co-est2024-alldata.csv`. It has:
 
 -   postcensal 2020-2024
@@ -306,7 +306,7 @@ df |>
 
 ```
 
-### Intercensal estimates
+### Intercensal estimates -- only use if NYSDOL data are not appropriate (?)
 
 #### download-intercensal-estimates
 
@@ -435,6 +435,64 @@ saveRDS(df3, fs::path(DWORK, "cenpop_2010to2020.rds"))
 
 ## Compare Census Bureau totals with NYSDOL totals
 
+```{r}
+
+df1 <- readRDS(fs::path(DDATA, "cenpop_nysdol.rds"))
+df2 <- readRDS(fs::path(DWORK, "cenpop_postcensal.rds"))
+
+glimpse(df1)
+names(df1) # "year"    "fips"    "cocode"  "area"    "program" "pop"; fips includes st and county; area includes NYS and county
+glimpse(df2)
+names(df2) # "year"     "rectype"  "stfips"   "cofips"   "stname"   "coname"   "variable" "value"
+count(df1, program)
+#  program         n
+# 1 censusbase    378
+# 2 intercensal  3150
+# 3 postcensal    252
+count(df2, rectype)
+#   rectype      n
+# 1 county  238944
+# 2 state     3876
+count(df2, variable)
+
+# make compatible
+df1a <- df1 |>
+  rename(cofips = cocode) |>
+  mutate(
+    stfips = str_sub(fips, 1, 2),
+    rectype = ifelse(cofips == "000", "state", "county"),
+    src = "nysdol"
+  ) |>
+  select(src, rectype, stfips, cofips, area, program, year, value = pop)
+
+df2a <- df2 |>
+  filter(variable == "popestimate") |>
+  mutate(src = "census", program = "postcensal") |>
+  select(src, rectype, stfips, cofips, area = coname, program, year, value)
+tmp <- df2a |> filter(stfips == "36")
+
+stack <- bind_rows(df1a, df2a |> filter(stfips == "36"))
+tmp <- stack |> filter(rectype == "state")
+
+stack |>
+  filter(rectype == "state", program == "postcensal") |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+# Wow - huge NYS shift in 2023, smaller shift in 2022
+
+albco <- "001"
+washco <- "115"
+cnty <- albco
+stack |>
+  filter(rectype == "county", program == "postcensal", cofips == cnty) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+# Wow - almost no shift for Wash Co; big shift for Albany
+
+```
+
 
 
 ## Census Components of Change
@@ -524,7 +582,11 @@ download.file(url, fs::path(dcenpop, fname), mode = "wb")
 
 ```
 
-```{r stop_here, echo=FALSE}
+## Stop here
+
+```{r}
+#| label: stop_here
+
 knitr::knit_exit()
 ```
 

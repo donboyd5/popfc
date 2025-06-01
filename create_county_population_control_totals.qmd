@@ -148,7 +148,7 @@ count(df2, year) |> ht()
 #| label: save-nysdol
 #| eval: false
 
-saveRDS(df2, fs::path(DDATA, "cenpop_nysdol.rds"))
+saveRDS(df2, fs::path(DWORK, "cenpop_nysdol.rds"))
 
 ```
 
@@ -158,7 +158,7 @@ saveRDS(df2, fs::path(DDATA, "cenpop_nysdol.rds"))
 #| label: explore-nysdol-population
 #| output: true
 
-df <- readRDS(fs::path(DDATA, "cenpop_nysdol.rds"))
+df <- readRDS(fs::path(DWORK, "cenpop_nysdol.rds"))
 cocodes <- count(df, fips, cocode, area)
 
 # 091, 113 115
@@ -436,8 +436,10 @@ saveRDS(df3, fs::path(DWORK, "cenpop_2010to2020.rds"))
 ## Compare Census Bureau totals with NYSDOL totals
 
 ```{r}
+#| label: combine-census-nysdol
+#| eval: false
 
-df1 <- readRDS(fs::path(DDATA, "cenpop_nysdol.rds"))
+df1 <- readRDS(fs::path(DWORK, "cenpop_nysdol.rds"))
 df2 <- readRDS(fs::path(DWORK, "cenpop_postcensal.rds"))
 
 glimpse(df1)
@@ -506,6 +508,8 @@ stack |>
 ## Save stacked file as control
 
 ```{r}
+#| label: save-census-nysdol
+#| eval: false
 
 glimpse(stack)
 stack2 <- stack |>
@@ -545,6 +549,40 @@ stack2 |>
 saveRDS(stack2, fs::path(DDATA, "pop_control.rds"))
 
 ```
+
+## Explore file
+
+```{r}
+#| label: explore-census-nysdol
+#| eval: false
+
+df <- readRDS(fs::path(DDATA, "pop_control.rds"))
+
+# 091, 113 115
+codes <- c("083", "091", "113", "115")
+
+df |>
+  filter(cofips %in% codes) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ cofips + area, scales = "free_y")
+
+baseyear <- 2010
+df |>
+  filter(cofips %in% codes, year >= baseyear) |>
+  mutate(ipop = value / value[year == baseyear] - 1, .by = cofips) |>
+  ggplot(aes(year, ipop, colour = area)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(
+    breaks = seq(-.2, .2, .02),
+    labels = scales::label_percent()
+  )
+
+```
+
 
 ## Census Components of Change
 

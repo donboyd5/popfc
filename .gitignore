@@ -13,5 +13,8 @@ create_county_population_control_totals_files/
 data/
 
 # ignore file types
+*.mhtml
+*.pdf
 *.rds
+*.xl*
 

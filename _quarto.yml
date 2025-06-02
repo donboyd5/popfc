@@ -58,3 +58,10 @@ book:
 # quarto publish netlify --no-render
 # quarto publish netlify --no-browser --no-prompt
 # quarto publish netlify --no-render --no-browser --no-prompt 
+
+# gitignore in a folder
+# Ignore everything in this folder
+# *  # uncomment
+
+# But do not ignore this file
+# !.gitignore  # uncomment

@@ -9,8 +9,9 @@ _freeze/
 _web/
 create_county_population_control_totals_files/
 
-#.. ignore data until we really know what we need
+#.. ignore data and data-raw for now until we really know what we need
 data/
+data_raw/
 
 # ignore file types
 *.mhtml

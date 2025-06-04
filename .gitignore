@@ -16,5 +16,6 @@ data/
 *.mhtml
 *.pdf
 *.rds
+*.txt
 *.xl*
 

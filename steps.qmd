@@ -1,0 +1,75 @@
+---
+editor_options: 
+  chunk_output_type: console
+editor:
+  markdown:
+    canonical: true  
+---
+
+# Steps
+
+## Setup
+
+```{r}
+#| label: setup
+
+source(here::here("setup.R"))
+```
+
+
+## Start population
+
+```{r}
+#| label: get-start
+
+fname <- "1990-2017 year state county sex age estimates for NY Washington County.txt"
+fpath <- fs::path(DCDC, fname)
+
+# "Notes"	"Yearly July 1st Estimates"	"Yearly July 1st Estimates Code"	"State"	"State Code"	"County"	"County Code"	"Sex"	"Sex Code"	"Age"	"Age Code"	Population
+# everything is quoted but for population
+
+# use fread because of the complexity of the input data
+
+dt <- data.table::fread(
+  fpath,
+  skip = 1, # skip junk row(s) at the start
+  nrows = 1e9, # adjust as needed to avoid junk rows at the end
+  colClasses = "character",
+  quote = "\""
+)
+
+df <- dt |>
+  as_tibble() |>
+  select(
+    year = V3,
+    stfips = V5,
+    state = V4,
+    cntyfips = V7,
+    county = V6,
+    sex = V9,
+    agec = V11,
+    pop = V12
+  ) |>
+  mutate(
+    year = as.integer(year),
+    pop = as.numeric(pop),
+    age = str_remove(agec, coll("+")) |> as.integer()
+  )
+count(df, age, agec) |> ht()
+
+df |> 
+    summarise(pop = sum(pop), .by=year) |> 
+    ggplot(aes(year, pop)) +
+    geom_line() +
+    geom_point()
+
+saveRDS(df, fs::path(DDATA, "pop_start.rds"))
+
+```
+
+## Births
+
+## Deaths
+
+
+## Migration

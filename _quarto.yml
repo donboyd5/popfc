@@ -31,6 +31,7 @@ book:
     - methodology.qmd
     - create_county_population_control_totals.qmd
     - get-components-of-change.qmd
+    - steps.qmd
     # - counties.qmd
     # - get-county-data.qmd
   # page-footer:

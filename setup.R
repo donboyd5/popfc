@@ -18,6 +18,7 @@ DDATA <- here::here("data")
 DWORK <- here::here("data_work")
 
 DCDC <- here::here(DRAW, "cdc")
+DNYG <- here::here(DRAW, "data_ny_gov")
 DNYSDOL <- here::here(DRAW, "nysdol")
 DNYSDOH <- here::here(DRAW, "nysdoh")
 DCENPOP <- here::here(DRAW, "census") # levels_components, totals

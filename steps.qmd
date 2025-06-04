@@ -19,6 +19,10 @@ source(here::here("setup.R"))
 
 ## Start population
 
+We start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder).
+
+Navigate from here: https://wonder.cdc.gov/bridged-race-population.html.
+
 ```{r}
 #| label: get-start
 
@@ -57,17 +61,137 @@ df <- dt |>
   )
 count(df, age, agec) |> ht()
 
-df |> 
-    summarise(pop = sum(pop), .by=year) |> 
-    ggplot(aes(year, pop)) +
-    geom_line() +
-    geom_point()
+df |>
+  summarise(pop = sum(pop), .by = year) |>
+  ggplot(aes(year, pop)) +
+  geom_line() +
+  geom_point()
 
 saveRDS(df, fs::path(DDATA, "pop_start.rds"))
 
 ```
 
 ## Births
+
+Age specific fertility rates were derived from Births by age of Mother (numerator) and Vintage 2017 Bridged-Race Postcensal Population Estimates (denominator).
+
+This dataset has counts of births occurring within the United States to U.S. residents and non-residents. Counts can be obtained by state, county, urbanization, child's sex and weight, mother's bridged race, mother's single race, mother's age, mother's education, gestation period, prenatal care, birth plurality, medical and tobacco use risk factors (mother). The data are derived from birth certificates issued in years 2007 - 2023.
+
+### Vital Statistics Live Births by Mother's Age and Resident County: Beginning 2008
+
+data.ny.gov
+
+[live births by mother's age and county](https://health.data.ny.gov/Health/Vital-Statistics-Live-Births-by-Mother-s-Age-and-R/i7yg-w5rg/about_data)
+
+```{r}
+#| label: data.ny.gov
+
+fname <- "Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250604.csv"
+fpath <- fs::path(DNYG, fname)
+
+df1 <- read_csv(fpath)
+df2 <- df1 |>
+  select(year = Year, county = County, mage = 4, births = 5)
+
+count(df2, mage)
+
+df2 |>
+  mutate(
+    pct = births[mage == "Unknown"] / births[mage == "Total"],
+    .by = c(year, county)
+  ) |>
+  filter(pct != 0, mage == "Unknown") |> # unknown is minimal
+  arrange(desc(abs(pct)))
+
+df2 |>
+  filter(county == "Washington", mage == "Total") |>
+  ggplot(aes(year, births)) +
+  geom_point() +
+  geom_line()
+
+df2 |>
+  filter(county == "Washington", mage != "Total") |>
+  mutate(ma1 = str_sub(mage, 1, 1)) |>
+  filter(ma1 %in% c("2", "3")) |>
+  ggplot(aes(year, births, colour = mage)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Washington County")
+
+```
+
+### Vital Statistics Live Births and Fertility Rates by Mother's Age and County: Beginning 2008
+
+data.ny.gov
+
+[live births and fertility rates by mother's age and county](https://health.data.ny.gov/Health/Vital-Statistics-Live-Births-and-Fertility-Rates-b/c2tx-jecb/about_data)
+
+
+
+```{r}
+
+fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_County__Beginning_2008_20250604.csv"
+fpath <- fs::path(DNYG, fname)
+
+df1 <- read_csv(fpath)
+df2 <- df1 |>
+  select(
+    year = Year,
+    county = County,
+    measure = 4,
+    units = 5,
+    mage = 6,
+    rate = 7
+  )
+
+count(df2, mage)
+count(df2, measure, units)
+
+df3 <- df2 |>
+  mutate(
+    measure = case_when(
+      measure == "Birth Rate" ~ "brate",
+      measure == "Fertility Rate" ~ "frate",
+      .default = "ERROR"
+    )
+  )
+
+count(df3, measure, units)
+
+cnty <- "Washington"
+check <- df3 |>
+  filter(county == cnty, year %in% 2021:2022) 
+
+cnty <- "Albany"
+cnty <- "Saratoga"
+cnty <- "Washington"
+df3 |>
+  filter(county == cnty, mage == "Total", measure == "brate") |>
+  ggplot(aes(year, rate)) +
+  geom_point() +
+  geom_line() +
+  ggtitle(cnty)
+
+df3 |>
+  filter(county == cnty, mage == "Total") |>
+  ggplot(aes(year, rate, colour = measure)) +
+  geom_point() +
+  geom_line() +
+  ggtitle(cnty)
+
+
+cnty <- "Albany"
+df2 |>
+  filter(county == cnty, mage != "Total") |>
+  mutate(ma1 = str_sub(mage, 1, 1)) |>
+  filter(ma1 %in% c("2", "3")) |>
+  ggplot(aes(year, births, colour = mage)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Washington County")
+
+```
+
 
 ## Deaths
 

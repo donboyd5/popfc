@@ -233,6 +233,8 @@ URL: https://www.health.ny.gov/statistics/vital_statistics/2015/table03.htm
 
 ### My notes
 
+**How do I use this information? Read more.**
+
 The Cornell link to NYSDOH life tables has life tables **for the state as a whole**, for 5-year age groupings. It seems like these would vary greatly by county due to race, ethnicity, and other demographic differences. They probably need to be adjusted to be consistent with Census components of change estimates by county.
 
 Vital Statistics Deaths by Resident County, Region, Place of Death: Beginning 2003

@@ -16,12 +16,32 @@ editor:
 source(here::here("setup.R"))
 ```
 
+## Notes
+
+-   Be sure to understand difference between resident population, civilian population, and other differences. What are we using here? What did Cornell use? What should we use?
+-   We can get control totals for population and components of change for the latest year [here](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv).
 
 ## Start population
 
-We start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder).
+Population by year, county, single year of age, and sex.
 
-Navigate from here: https://wonder.cdc.gov/bridged-race-population.html.
+Cornell used:
+
+> We start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder).
+
+Current equivalent is to find it from here: https://wonder.cdc.gov/bridged-race-population.html. I retrieved both the 2017 and 2020 vintages.
+
+Note that CDC will not create this after the 1990-2020 vintage so maybe get directly from Census.
+
+We can get postcensal (through 2023) age by 5-year groupings, and sex, by year and county within a state [here](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/).
+
+**For single year of age by sex data** go to the [county details landing page](https://www.census.gov/data/tables/time-series/demo/popest/2020s-counties-detail.html), page down for the single year of age tables, and get the [NY file cc-est2023-syasex-36.csv](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-syasex-36.csv). This is only available for 2020 to 2023 (not yet 2024) so we'd have to use this to break out the 2024 data.
+
+### Census single-year of age by sex data
+
+TODO.
+
+### CDC single-year of age by sex data (what Cornell used)
 
 ```{r}
 #| label: get-start
@@ -195,5 +215,19 @@ df2 |>
 
 ## Deaths
 
+### Cornell notes
+
+Life tables were created using age specific mortality rates that were derived from Deaths by sex and age (numerator) and Vintage 2017 Bridged-Race Postcensal Population Estimates (denominator).
+
+URL: https://wonder.cdc.gov/cmf-icd10.html https://wonder.cdc.gov/Bridged-Race-v2017.HTML
+Mortality rates for the 85+ age are corresponding with a life expectancy of 7.4 for males and 8.6 for females. **We assumed this is the same throughout the state.**
+
+URL: https://www.health.ny.gov/statistics/vital_statistics/2015/table03.htm
+
+### My notes
+
+The Cornell link to NYSDOH life tables has life tables **for the state as a whole**, for 5-year age groupings. It seems like these would vary greatly by county due to race, ethnicity, and other demographic differences. They probably need to be adjusted to be consistent with Census components of change estimates by county.
 
 ## Migration
+
+TO COME.

@@ -25,9 +25,11 @@ source(here::here("setup.R"))
 
 Population by year, county, single year of age, and sex.
 
-Cornell used:
+### Cornell notes
 
 > We start with the population in 2015 (Data source: Vintage 2017 Bridged-Race Postcensal Population Estimates, downloaded though CDC-Wonder).
+
+### My notes
 
 Current equivalent is to find it from here: https://wonder.cdc.gov/bridged-race-population.html. I retrieved both the 2017 and 2020 vintages.
 
@@ -94,9 +96,15 @@ saveRDS(df, fs::path(DDATA, "pop_start.rds"))
 
 ## Births
 
+### Cornell notes
+
 Age specific fertility rates were derived from Births by age of Mother (numerator) and Vintage 2017 Bridged-Race Postcensal Population Estimates (denominator).
 
 This dataset has counts of births occurring within the United States to U.S. residents and non-residents. Counts can be obtained by state, county, urbanization, child's sex and weight, mother's bridged race, mother's single race, mother's age, mother's education, gestation period, prenatal care, birth plurality, medical and tobacco use risk factors (mother). The data are derived from birth certificates issued in years 2007 - 2023.
+
+### My notes
+
+Get updated data from data.ny.gov.
 
 ### Vital Statistics Live Births by Mother's Age and Resident County: Beginning 2008
 
@@ -227,6 +235,32 @@ URL: https://www.health.ny.gov/statistics/vital_statistics/2015/table03.htm
 
 The Cornell link to NYSDOH life tables has life tables **for the state as a whole**, for 5-year age groupings. It seems like these would vary greatly by county due to race, ethnicity, and other demographic differences. They probably need to be adjusted to be consistent with Census components of change estimates by county.
 
+Vital Statistics Deaths by Resident County, Region, Place of Death: Beginning 2003
+Vital Statistics Deaths by Resident County, Region, and Race/Ethnicity: Beginning 2003
+[**Vital Statistics Deaths by Resident County, Region, and Age-Group: Beginning 2003**](https://health.data.ny.gov/Health/Vital-Statistics-Deaths-by-Resident-County-Region-/xit9-mprv/about_data) -- note that this does not have gender
+
+See [CDC](https://www.cdc.gov/nchs/products/life_tables.htm) for life tables methodology.
+[Social Security Life Tables for the U.S.](https://www.ssa.gov/oact/STATS/table4c6.html)
+
+[NYSDOH](https://www.health.ny.gov/statistics/vital_statistics/2022/)
+Table 35 Deaths by Age and Resident County, New York State 2022
+Table 36 Death Rates by Age and Resident County, New York State 2022
+Table 39 Death Rates for Selected Causes of Death, by Resident County, New York State 2022
+Table 40 Age-Sex Adjusted Death Rates for Selected Causes of Death by Resident County, New York State 2022
+
+[CDC Small area life expectancy files](https://www.cdc.gov/nchs/nvss/usaleep/usaleep.html#life-expectancy)
+
+Maybe just use NYSDOH Table 3 age-group x sex life table and then try to improve.
+Maybe use https://www.cdc.gov/nchs/nvss/usaleep/usaleep.html small area stuff abridged period table https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NVSS/USALEEP/XLSX/NY_B.XLSX which has by age group but not sex for several census tracts in Washington County.
+
+
+
 ## Migration
 
 TO COME.
+
+### Cornell notes
+
+
+### My notes
+

@@ -250,6 +250,8 @@ Table 36 Death Rates by Age and Resident County, New York State 2022
 Table 39 Death Rates for Selected Causes of Death, by Resident County, New York State 2022
 Table 40 Age-Sex Adjusted Death Rates for Selected Causes of Death by Resident County, New York State 2022
 
+https://nyhealthfoundation.org/resource/life-expectancy-by-census-tract-in-new-york-state/#life-expectancy-income
+
 [CDC Small area life expectancy files](https://www.cdc.gov/nchs/nvss/usaleep/usaleep.html#life-expectancy)
 
 Maybe just use NYSDOH Table 3 age-group x sex life table and then try to improve.

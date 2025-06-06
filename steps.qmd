@@ -256,6 +256,11 @@ Maybe just use NYSDOH Table 3 age-group x sex life table and then try to improve
 Maybe use https://www.cdc.gov/nchs/nvss/usaleep/usaleep.html small area stuff abridged period table https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NVSS/USALEEP/XLSX/NY_B.XLSX which has by age group but not sex for several census tracts in Washington County.
 
 
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/NVSR/72-12/
+White non-Hispanic males US Table 17
+White non-Hispanic females US Table 18
+
+**NY_B.XLSX may be best geography, perhaps with details by NVSR Tables 17 and 18.**
 
 ## Migration
 

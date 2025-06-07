@@ -43,10 +43,59 @@ We can get postcensal (through 2023) age by 5-year groupings, and sex, by year a
 
 TODO.
 
+```{r}
+#| label: census-sex-sya
+
+# this is NOT sya but rather grouped age!! cc-est2023-agesex-36.csv
+df <- vroom::vroom(
+  fs::path(DCENPOP, "2020-plus", "cc-est2023-syasex-36.csv"),
+  col_types = cols(.default = col_character())
+)
+
+df1 <- df |>
+  rename_with(str_to_lower) |>
+  select(
+    stfips = state,
+    cntyfips = county,
+    iyear = year,
+    area = ctyname,
+    age,
+    pop = tot_pop,
+    popm = tot_male,
+    popf = tot_female
+  ) |>
+  mutate(
+    iyear = as.integer(iyear),
+    age = as.integer(age),
+    across(c(pop, popm, popf), as.numeric)
+  ) |>
+  filter(iyear > 1) |>
+  mutate(year = 2018 + iyear)
+
+summary(df1)
+
+# check male + female = total
+df1 |> filter(pop != (popm + popf))
+
+df2 <- df1 |>
+  select(stfips, cntyfips, area, year, age, popm, popf) |>
+  pivot_longer(cols = c(popm, popf)) |>
+  mutate(share = value / sum(value), .by = c(stfips, cntyfips, area, year))
+
+# washington county check
+df2 |>
+  filter(year == 2023, cntyfips == "115") |>
+  summarise(value = sum(value), share = sum(share))
+
+saveRDS(df2, fs::path(DWORK, "cenpop_sya_sex.rds"))
+
+```
+
 ### CDC single-year of age by sex data (what Cornell used)
 
 ```{r}
 #| label: get-start
+#| eval: false
 
 # fname <- "1990-2017 year state county sex age estimates for NY Washington County.txt"
 fname <- "1990-2020 year state county sex age estimates for NY Washington County.txt"
@@ -90,9 +139,48 @@ df |>
   geom_line() +
   geom_point()
 
-saveRDS(df, fs::path(DDATA, "pop_start.rds"))
+# saveRDS(df, fs::path(DDATA, "pop_start.rds"))
 
 ```
+
+### Make start-year population by sex and single year of age (sya)
+
+```{r}
+#| label: pop-sex-sya
+
+poptot <- readRDS(fs::path(DDATA, "pop_control.rds"))
+popsya <- readRDS(fs::path(DWORK, "cenpop_sya_sex.rds"))
+
+# for latest year, get control total population and estimate by sya and sex
+poply <- poptot |>
+  filter(
+    year == max(year),
+    rectype == "county",
+    program == "postcensal",
+    src == "census"
+  ) |> # all 62 counties
+  select(stfips, cntyfips = cofips, area, year, value)
+
+popshares <- popsya |> filter(year == max(year))
+
+pop_sex_sya <- popshares |>
+  select(-c(year, value)) |>
+  left_join(
+    poply |> rename(shortname = area, poptot = value),
+    by = join_by(stfips, cntyfips)
+  ) |>
+  mutate(pop = poptot * share) |> 
+  select(-share)
+
+check <- pop_sex_sya |> 
+  summarise(pop = sum(pop), poptot = first(poptot),
+  .by=c(stfips, cntyfips, area, shortname, year))
+
+saveRDS(pop_sex_sya, fs::path(DWORK, "cntypop_sex_sya_2024.rds"))
+
+
+```
+
 
 ## Births
 

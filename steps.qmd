@@ -8,6 +8,10 @@ editor:
 
 # Steps
 
+## TODO
+
+-   read the 2008 Cornell documentation it looks helpful
+
 ## Setup
 
 ```{r}
@@ -169,12 +173,15 @@ pop_sex_sya <- popshares |>
     poply |> rename(shortname = area, poptot = value),
     by = join_by(stfips, cntyfips)
   ) |>
-  mutate(pop = poptot * share) |> 
+  mutate(pop = poptot * share) |>
   select(-share)
 
-check <- pop_sex_sya |> 
-  summarise(pop = sum(pop), poptot = first(poptot),
-  .by=c(stfips, cntyfips, area, shortname, year))
+check <- pop_sex_sya |>
+  summarise(
+    pop = sum(pop),
+    poptot = first(poptot),
+    .by = c(stfips, cntyfips, area, shortname, year)
+  )
 
 saveRDS(pop_sex_sya, fs::path(DWORK, "cntypop_sex_sya_2024.rds"))
 

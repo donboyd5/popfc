@@ -45,8 +45,6 @@ We can get postcensal (through 2023) age by 5-year groupings, and sex, by year a
 
 ### Census single-year of age by sex data
 
-TODO.
-
 ```{r}
 #| label: census-sex-sya
 
@@ -55,6 +53,13 @@ df <- vroom::vroom(
   fs::path(DCENPOP, "2020-plus", "cc-est2023-syasex-36.csv"),
   col_types = cols(.default = col_character())
 )
+
+# The key for the YEAR variable is as follows:
+# 1 = 4/1/2020 population estimates base
+# 2 = 7/1/2020 population estimate
+# 3 = 7/1/2021 population estimate
+# 4 = 7/1/2022 population estimate
+# 5 = 7/1/2023 population estimate
 
 df1 <- df |>
   rename_with(str_to_lower) |>
@@ -149,6 +154,10 @@ df |>
 
 ### Make start-year population by sex and single year of age (sya)
 
+Use cenpop_sya_sex.rds (based on cc-est2023-agesex-36.csv) for 2023 by sex, sya to allocate pop 2024 to sex, sya.
+
+Save as `cntypop_sex_sya_2024`.
+
 ```{r}
 #| label: pop-sex-sya
 
@@ -188,7 +197,6 @@ saveRDS(pop_sex_sya, fs::path(DWORK, "cntypop_sex_sya_2024.rds"))
 
 ```
 
-
 ## Births
 
 ### Cornell notes
@@ -203,7 +211,9 @@ Get updated data from data.ny.gov.
 
 ### Vital Statistics Live Births by Mother's Age and Resident County: Beginning 2008
 
-data.ny.gov
+Data sources:
+
+-   Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250604.csv (data.ny.gov) has # births by county and mother's age groups, 2008-
 
 [live births by mother's age and county](https://health.data.ny.gov/Health/Vital-Statistics-Live-Births-by-Mother-s-Age-and-R/i7yg-w5rg/about_data)
 
@@ -218,14 +228,38 @@ df2 <- df1 |>
   select(year = Year, county = County, mage = 4, births = 5)
 
 count(df2, mage)
-
 df2 |>
   mutate(
+    mage = factor(mage, levels = mage_order),
     pct = births[mage == "Unknown"] / births[mage == "Total"],
     .by = c(year, county)
   ) |>
   filter(pct != 0, mage == "Unknown") |> # unknown is minimal
   arrange(desc(abs(pct)))
+
+
+mage_order <- c(
+  "<15",
+  "15-17",
+  "18-19",
+  "20-24",
+  "25-29",
+  "30-34",
+  "35-39",
+  "40-44",
+  "45+",
+  "Unknown",
+  "Total"
+)
+
+df3 <- df2 |>
+  mutate(
+    mage = factor(mage, levels = mage_order),
+    .by = c(year, county)
+  )
+count(df3, mage)  
+
+
 
 df2 |>
   filter(county == "Washington", mage == "Total") |>

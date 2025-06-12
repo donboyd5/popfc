@@ -31,7 +31,9 @@ book:
     - methodology.qmd
     - create_county_population_control_totals.qmd
     - get-components-of-change.qmd
+    - get-year-county-sex-sya-shares.qmd
     - steps.qmd
+    # - misc_data_notes.qmd
     # - counties.qmd
     # - get-county-data.qmd
   # page-footer:

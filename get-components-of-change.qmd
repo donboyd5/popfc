@@ -10,34 +10,12 @@ editor:
 
 https://www2.census.gov/programs-surveys/popest/datasets/
 
+
 ```{r}
 #| label: setup
 
-libs <- function() {
-  library(tidyverse)
-  library(readxl)
-  library(vroom)
-  library(fs)
-  library(skimr)
-  library(Hmisc)
-  library(gt)
-  library(btools)
-}
-
-suppressPackageStartupMessages(libs())
-
-# ns(options())
-
-DRAW <- here::here("data_raw")
-DDATA <- here::here("data")
-DWORK <- here::here("data_work")
-
-DNYSDOL <- here::here(DRAW, "nysdol")
-DNYSDOH <- here::here(DRAW, "nysdoh")
-DCENPOP <- here::here(DRAW, "census") # levels_components, totals
-
+source(here::here("setup.R"))
 ```
-
 
 
 ## Census Components of Change

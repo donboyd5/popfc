@@ -22,12 +22,23 @@ source(here::here("setup.R"))
 
 https://www.census.gov/programs-surveys/popest.html
 https://www.census.gov/programs-surveys/popest/data/data-sets.html
-
 https://www.census.gov/programs-surveys/international-programs/events/training/select-topics-in-international-population-health/demographic-change.html
 
-### DON'T USE THIS YET -- 2010-2019
+### Files to use
 
-https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.html
+-   [co-est2010-alldata.csv -- county-year 2000-2010 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv) -- note that the Census folder is called "2010-eval-estimates" so perhaps these were not officially released
+-   [co-est2020-alldata.csv -- county-year 2010-2020 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv)
+-   [co-est2024-alldata.csv -- county-year 2020-2024 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv)
+
+## Get data, combine, and save (1st step, raw data)
+
+```{r}
+#| label: get-2000-to-2010
+
+```
+
+
+## Old
 
 ```{r}
 #| label: 2010-2019-coc

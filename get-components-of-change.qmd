@@ -103,6 +103,12 @@ df <- purrr::map(fpaths, f) |> list_rbind()
 summary(df)
 saveRDS(df, fs::path(DWORK, "coc_raw.rds"))
 
+check <- f(fpaths[3])
+check2 <- check |>
+  filter(stfips == "36", cntyfips == "001", variable == "births")
+check3 <- read_csv(fpaths[3]) |> filter(STATE == "36", COUNTY == "001")
+check4 <- read_csv(fpaths[3]) |> filter(STATE == "36", COUNTY == "000")
+
 ```
 
 ## Clean data and save cleaned data
@@ -111,9 +117,124 @@ saveRDS(df, fs::path(DWORK, "coc_raw.rds"))
 
 cocraw <- readRDS(fs::path(DWORK, "coc_raw.rds"))
 
+count(cocraw, variable)
+check <- cocraw |>
+  filter(
+    stfips == "36",
+    geotype == "county",
+    shortname == "Hamilton",
+    year == 2010
+  )
+
+
+# first, make names uniform as they vary slightly over years; this will make it easier to keep latest version of any duplicate records for a variable
+
+# drop censuspop and estimatesbase so that we have July 1 estimates for all
+coc2 <- cocraw |>
+  filter(!variable %in% c("censuspop", "estimatesbase", "gqestimatesbase")) |>
+  mutate(
+    variable = ifelse(variable == "rbirth", "rbirths", variable), # for consistency between rate and value
+    variable = ifelse(variable == "rdeath", "rdeaths", variable),
+    variable = str_replace(variable, "domesticmig", "dmig"),
+    variable = str_replace(variable, "internationalmig", "imig"),
+    variable = str_replace(variable, "gqestimates", "gqest"),
+    variable = str_replace(variable, "naturalinc", "naturalchg"), # this is important for removing duplicates!
+    variable = str_replace(variable, "natural", "nat"),
+    variable = str_replace(variable, "popestimate", "pop"),
+    variable = str_replace(variable, "residual", "resid")
+  )
+count(coc2, variable)
+summary(coc2)
+
+# when we have two values for the same variable-year combo, take the one from the later file
+# this can happen, for example, when we have data for the 2010 cenus year in both the file ending 2010 and the file ending 2020
+coc3 <- coc2 |>
+  arrange(stfips, cntyfips, variable, year, file) |>
+  group_by(stfips, cntyfips, variable, year) |>
+  filter(row_number() == n()) |> # Takes the last row in each group
+  ungroup()
+
+# check for duplicates - they should be gone!
+tmp <- coc3 |>
+  summarise(
+    n = n(),
+    .by = c(stfips, cntyfips, stname, shortname, geotype, variable, value, year)
+  )
+count(tmp, n) # good, all gone
+
+# create variable type and make longer file
+coc4 <- coc3 |>
+  mutate(
+    vtype = case_when(
+      str_sub(variable, 1, 1) == "r" & variable != "resid" ~ "rate",
+      .default = "value"
+    )
+  )
+
+count(coc4, vtype, variable)
+
+coc5 <- coc4 |>
+  select(
+    geotype,
+    stfips,
+    cntyfips,
+    stname,
+    shortname,
+    year,
+    vtype,
+    variable,
+    value
+  ) |>
+  mutate(
+    variable = ifelse(
+      str_sub(variable, 1, 1) == "r" & variable != "resid",
+      str_sub(variable, 2, -1),
+      variable
+    )
+  )
+
+count(coc5, vtype, variable) |> pivot_wider(names_from = vtype, values_from = n)
+
+saveRDS(coc5, fs::path(DWORK, "coclong.rds"))
+
 ```
 
 ## Explore
+
+```{r}
+
+coc <- readRDS(fs::path(DWORK, "coclong.rds"))
+glimpse(coc)
+
+df <- coc |>
+  filter(stfips == "36", shortname == "Washington")
+
+count(df, variable)
+
+cvar <- "imig" # deaths netmig resid dmig imig pop
+cvtype <- "value" # rate value
+# rural counties ~ 1 hr from a city
+cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+coc |>
+  filter(stfips == "36", shortname == cnty) |>
+  filter(vtype == cvtype, variable == cvar) |>
+  # mutate(value = ifelse(year %in% c(2000, 2010, 2020), NA_real_, value)) |>
+  ggplot(aes(year, value)) +
+  geom_point() +
+  geom_line() +
+  # geom_hline(yintercept = 0) +
+  ggtitle(paste(cnty, cvar, cvtype))
+
+abc
+
+# tmp <- cocraw |>
+#   filter(
+#     stfips == "36",
+#     cntyfips == "115",
+#     year %in% c(2000, 2010, 2020),
+#     str_detect(name, "birth")
+#   )
+```
 
 ```{r}
 #| label: explore

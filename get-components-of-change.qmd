@@ -8,21 +8,16 @@ editor:
 
 # Get County Components of Change
 
+## Links to Census Components of Change
+
 https://www2.census.gov/programs-surveys/popest/datasets/
-
-
-```{r}
-#| label: setup
-
-source(here::here("setup.R"))
-```
-
-
-## Census Components of Change
-
 https://www.census.gov/programs-surveys/popest.html
 https://www.census.gov/programs-surveys/popest/data/data-sets.html
 https://www.census.gov/programs-surveys/international-programs/events/training/select-topics-in-international-population-health/demographic-change.html
+https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html
+https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx
+https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
+
 
 ### Files to use
 
@@ -32,18 +27,34 @@ https://www.census.gov/programs-surveys/international-programs/events/training/s
 
 The rate variables must be per thousand I think.
 
+```{r}
+#| label: setup
+
+source(here::here("setup.R"))
+```
+
+
+## Download Census files (if needed)
+
+```{r}
+#| label: download
+#| eval: false
+
+# co-est2010-alldata.csv co-est2020-alldata.csv co-est2024-alldata.csv
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv"
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv"
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
+
+# fname <- fs::path_file(url)
+# download.file(url, fs::path(DCOC, fname), mode = "wb")
+
+```
+
+
 ## Get data, combine, and save (1st step, raw data)
 
 ```{r}
 #| label: get-all
-
-# co-est2010-alldata.csv
-# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv"
-# fname <- fs::path_file(url)
-# download.file(url, fs::path(DCOC, fname), mode = "wb")
-
-fname <- "co-est2010-alldata.csv"
-fpath <- fs::path(DCOC, fname)
 
 f <- function(fpath) {
   df <- vroom(fpath, col_types = cols(.default = col_character()))
@@ -94,6 +105,16 @@ saveRDS(df, fs::path(DWORK, "coc_raw.rds"))
 
 ```
 
+## Clean data and save cleaned data
+
+```{r}
+
+cocraw <- readRDS(fs::path(DWORK, "coc_raw.rds"))
+
+```
+
+## Explore
+
 ```{r}
 #| label: explore
 
@@ -127,56 +148,13 @@ abc
 
 ```
 
-```{r}
-#| label: get-2010-to-2020
-
-# co-est2020-alldata.csv
-# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv"
-# fname <- fs::path_file(url)
-# download.file(url, fs::path(DCOC, fname), mode = "wb")
-
-```
-
-```{r}
-#| label: get-2020-plus
-
-# co-est2024-alldata.csv
-
-# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
-# fname <- fs::path_file(url)
-# download.file(url, fs::path(DCOC, fname), mode = "wb")
-
-```
-
 
 ## Old
 
 ```{r}
-#| label: 2010-2019-coc
+#| label: contributions
 #| eval: false
 
-# https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf
-
-fname <- "co-est2019-alldata.csv"
-fpath <- fs::path(dcenpop, fname)
-
-# the rate variables must be per thousand I think
-
-df <- vroom(fpath, col_types = cols(.default = col_character()))
-
-tmp <- df |>
-  rename_with(str_to_lower) |>
-  filter(state == "36", county == "115")
-tmp |>
-  pivot_longer(cols = -c(sumlev:ctyname)) |>
-  filter(str_detect(name, "2018"))
-
-tmp |>
-  pivot_longer(cols = -c(sumlev:ctyname)) |>
-  filter(str_detect(name, "rdeath")) # rnatural rnetmig
-
-vars <- c("rbirth", "rdeath", "rnetmig")
-vars <- c("rbirth", "rdeath", "rinternationalmig", "rdomesticmig")
 vars <- c(
   "rbirth",
   "rdeath",
@@ -206,22 +184,5 @@ tmp |>
     labels = scales::label_percent()
   ) +
   ggtitle("Change in population by cause as % of starting (?) population")
-
-```
-
-### 2020-2024
-
-https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html
-https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx
-https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
-
-```{r}
-#| label: 2020-2024-coc
-#| eval: false
-
-# url <- "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx"
-url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
-fname <- fs::path_file(url)
-download.file(url, fs::path(dcenpop, fname), mode = "wb")
 
 ```

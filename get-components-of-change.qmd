@@ -35,7 +35,7 @@ The rate variables must be per thousand I think.
 ## Get data, combine, and save (1st step, raw data)
 
 ```{r}
-#| label: get-2000-to-2010
+#| label: get-all
 
 # co-est2010-alldata.csv
 # url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv"
@@ -44,26 +44,58 @@ The rate variables must be per thousand I think.
 
 fname <- "co-est2010-alldata.csv"
 fpath <- fs::path(DCOC, fname)
-df <- vroom(fpath, col_types = cols(.default = col_character()))
-count(df, SUMLEV)
-glimpse(df)
-dflong <- df |>
-  rename_with(tolower) |>
-  select(-region, -division) |>
-  rename(stfips = state, cntyfips = county, cntyname = ctyname) |>
-  mutate(
-    geotype = case_when(
-      sumlev == "040" ~ "state",
-      sumlev == "050" ~ "county",
-      .default = "ERROR"
-    ),
-    shortname = str_remove(cntyname, " County")
-  ) |>
-  pivot_longer(
-    -c(sumlev, geotype, stfips, stname, cntyfips, cntyname, shortname)
-  )
 
-dflong
+f <- function(fpath) {
+  df <- vroom(fpath, col_types = cols(.default = col_character()))
+
+  dflong <- df |>
+    rename_with(tolower) |>
+    select(-region, -division) |>
+    rename(stfips = state, cntyfips = county, cntyname = ctyname) |>
+    mutate(
+      geotype = case_when(
+        sumlev == "040" ~ "state",
+        sumlev == "050" ~ "county",
+        .default = "ERROR"
+      ),
+      shortname = str_remove(cntyname, " County")
+    ) |>
+    pivot_longer(
+      -c(sumlev, geotype, stfips, stname, cntyfips, cntyname, shortname)
+    )
+
+  dflong2 <- dflong |>
+    mutate(
+      variable = case_when(
+        stringr::str_starts(name, "census") ~ "censuspop",
+        .default = stringr::str_sub(name, end = -5)
+      ),
+      year = case_when(
+        stringr::str_starts(name, "census") ~ stringr::str_sub(name, 7, 10),
+        .default = stringr::str_sub(name, start = -4)
+      ),
+      variable = str_remove(variable, "_"),
+      year = as.integer(year),
+      value = as.numeric(value),
+      file = fs::path_file(fpath)
+    )
+}
+
+fnames <- c(
+  "co-est2010-alldata.csv",
+  "co-est2020-alldata.csv",
+  "co-est2024-alldata.csv"
+)
+fpaths <- fs::path(DCOC, fnames)
+
+df <- purrr::map(fpaths, f) |> list_rbind()
+summary(df)
+saveRDS(df, fs::path(DWORK, "coc_raw.rds"))
+
+```
+
+```{r}
+#| label: explore
 
 # how do the numbers fit together
 # to compute npopchg_2002, you’d typically need:

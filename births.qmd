@@ -38,3 +38,40 @@ mage_order <- c(
 
 ```
 
+## Get and smooth Census data on births
+
+```{r}
+
+df <- readRDS(fs::path(DWORK, "coclong.rds"))
+glimpse(df)
+
+
+```
+
+### Explore Census births data
+
+```{r}
+cnty <- "Westchester" # Albany Saratoga Washington Westchester
+check <- df |>
+  filter(
+    stfips == "36",
+    # cntyfips == "115",
+    shortname == cnty,
+    year %in% 2020:2024,
+    str_detect(variable, "birth") | variable == "pop"
+  ) |>
+  select(shortname, year, vtype, variable, value) |>
+  mutate(variable = ifelse(vtype == "rate", paste0("r", variable), variable)) |>
+  select(-vtype) |>
+  pivot_wider(names_from = variable) |>
+  arrange(year) |>
+  mutate(
+    r0 = births / pop * 1000,
+    rlag = births / lag(pop) * 1000,
+    rlead = births / lead(pop) * 1000
+  )
+check
+
+```
+
+### Interpolate and adjust Census births data

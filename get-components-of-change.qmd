@@ -184,18 +184,25 @@ coc5 <- coc4 |>
     vtype,
     variable,
     value
-  ) |>
-  mutate(
-    variable = ifelse(
-      str_sub(variable, 1, 1) == "r" & variable != "resid",
-      str_sub(variable, 2, -1),
-      variable
-    )
   )
 
-count(coc5, vtype, variable) |> pivot_wider(names_from = vtype, values_from = n)
+# |>
+# mutate(
+#   variable = ifelse(
+#     str_sub(variable, 1, 1) == "r" & variable != "resid",
+#     str_sub(variable, 2, -1),
+#     variable
+#   )
+# count(coc5, vtype, variable) |> pivot_wider(names_from = vtype, values_from = n)
 
-saveRDS(coc5, fs::path(DWORK, "coclong.rds"))
+coc6 <- coc5 |>
+  select(-vtype) |>
+  pivot_wider(names_from = variable) |>
+  arrange(geotype, stfips, cntyfips, year) |>
+  mutate(poplag = lag(pop), .by = c(geotype, stfips, cntyfips)) |>
+  relocate(pop, poplag, .after = year)
+
+saveRDS(coc6, fs::path(DWORK, "coclong.rds"))
 
 ```
 
@@ -209,16 +216,15 @@ glimpse(coc)
 df <- coc |>
   filter(stfips == "36", shortname == "Washington")
 
+df2 <- df
 count(df, variable)
 
 cvar <- "imig" # deaths netmig resid dmig imig pop
-cvtype <- "value" # rate value
 # rural counties ~ 1 hr from a city
 cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
 coc |>
   filter(stfips == "36", shortname == cnty) |>
-  filter(vtype == cvtype, variable == cvar) |>
-  # mutate(value = ifelse(year %in% c(2000, 2010, 2020), NA_real_, value)) |>
+  select(year, value = all_of(cvar)) |>
   ggplot(aes(year, value)) +
   geom_point() +
   geom_line() +
@@ -226,84 +232,5 @@ coc |>
   ggtitle(paste(cnty, cvar, cvtype))
 
 abc
-
-# tmp <- cocraw |>
-#   filter(
-#     stfips == "36",
-#     cntyfips == "115",
-#     year %in% c(2000, 2010, 2020),
-#     str_detect(name, "birth")
-#   )
-```
-
-```{r}
-#| label: explore
-
-# how do the numbers fit together
-# to compute npopchg_2002, you’d typically need:
-# births2002, deaths2002, netmig2002, and residual2002
-check <- dflong |>
-  filter(
-    stfips == "36",
-    cntyfips == "001",
-    name %in%
-      c(
-        "popestimate2001",
-        "popestimate2002",
-        "npopchg_2002",
-        "births2002",
-        "deaths2002",
-        "naturalinc2002",
-        "domesticmig2002",
-        "internationalmig2002",
-        "netmig2002",
-        "residual2002"
-      )
-  ) |>
-  select(shortname, name, value)
-
-check
-
-abc
-
-
-```
-
-
-## Old
-
-```{r}
-#| label: contributions
-#| eval: false
-
-vars <- c(
-  "rbirth",
-  "rdeath",
-  "rinternationalmig",
-  "rdomesticmig",
-  "rnaturalinc"
-)
-
-
-tmp |>
-  pivot_longer(cols = -c(sumlev:ctyname)) |>
-  mutate(
-    year = str_sub(name, -4, -1) |> as.integer(),
-    var = str_remove(name, as.character(year)),
-    value = as.numeric(value),
-    value = value / 1000,
-    value = ifelse(var == "rdeath", -value, value)
-  ) |>
-  filter(var %in% vars) |>
-  ggplot(aes(year, value, colour = var)) +
-  geom_line(size = 1) +
-  geom_point(size = 2) +
-  geom_hline(yintercept = 0) +
-  scale_x_continuous(breaks = 2010:2020) +
-  scale_y_continuous(
-    breaks = seq(-.01, .02, .002),
-    labels = scales::label_percent()
-  ) +
-  ggtitle("Change in population by cause as % of starting (?) population")
 
 ```

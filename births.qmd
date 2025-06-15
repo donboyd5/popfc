@@ -78,6 +78,17 @@ check |>
 ```{r}
 
 # calculate improved births for decennial census years
-df2 <- df
+df2 <- df |>
+  mutate(avgpop = (pop + poplag) / 2, birthsadj = avgpop * rbirths / 1000) |>
+  relocate(birthsadj, .after = births)
+
+cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+df2 |>
+  filter(stfips == "36", shortname == cnty) |>
+  ggplot(aes(year, birthsadj)) +
+  geom_point() +
+  geom_line() +
+  geom_line(aes(year, births), colour = "red") +
+  ggtitle(cnty)
 
 ```

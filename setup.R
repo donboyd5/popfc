@@ -1,6 +1,6 @@
 libs <- function() {
   library(tidyverse)
-  tprint <- 75 # default tibble print
+  tprint <- 25 # default tibble print
   options(tibble.print_max = tprint, tibble.print_min = tprint) # show up to tprint rows
   library(readxl)
   library(vroom)

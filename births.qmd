@@ -1,0 +1,40 @@
+---
+editor_options: 
+  chunk_output_type: console
+editor:
+  markdown:
+    canonical: true  
+---
+
+# Births
+
+Compare sources of births data.
+Construct birth estimates.
+
+## Setup
+```{r}
+#| label: setup
+
+source(here::here("setup.R"))
+```
+
+
+```{r}
+#| label: constants
+
+mage_order <- c(
+  "<15",
+  "15-17",
+  "18-19",
+  "20-24",
+  "25-29",
+  "30-34",
+  "35-39",
+  "40-44",
+  "45+",
+  "Unknown",
+  "Total"
+)
+
+```
+

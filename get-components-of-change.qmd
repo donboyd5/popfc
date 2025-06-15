@@ -202,7 +202,8 @@ coc6 <- coc5 |>
   mutate(poplag = lag(pop), .by = c(geotype, stfips, cntyfips)) |>
   relocate(pop, poplag, .after = year)
 
-saveRDS(coc6, fs::path(DWORK, "coclong.rds"))
+saveRDS(coc6, fs::path(DWORK, "cocwide.rds"))
+# saveRDS(coc5, fs::path(DWORK, "coclong.rds"))
 
 ```
 

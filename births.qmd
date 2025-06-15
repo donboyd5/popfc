@@ -42,13 +42,16 @@ mage_order <- c(
 
 ```{r}
 
-df <- readRDS(fs::path(DWORK, "coclong.rds"))
+df <- readRDS(fs::path(DWORK, "cocwide.rds"))
 glimpse(df)
 
 
 ```
 
 ### Explore Census births data
+
+The checks below show that Census calculates birth rates as births / (avg pop of current and prior year) * 1000.
+For example, birth rate in 2018 = births in 2018 / avg pop of 2018 and 2017, x 1000.
 
 ```{r}
 cnty <- "Westchester" # Albany Saratoga Washington Westchester
@@ -57,21 +60,24 @@ check <- df |>
     stfips == "36",
     # cntyfips == "115",
     shortname == cnty,
-    year %in% 2020:2024,
-    str_detect(variable, "birth") | variable == "pop"
+    year %in% 2012:2018,
+    # str_detect(variable, "birth") | variable == "pop"
   ) |>
-  select(shortname, year, vtype, variable, value) |>
-  mutate(variable = ifelse(vtype == "rate", paste0("r", variable), variable)) |>
-  select(-vtype) |>
-  pivot_wider(names_from = variable) |>
-  arrange(year) |>
-  mutate(
-    r0 = births / pop * 1000,
-    rlag = births / lag(pop) * 1000,
-    rlead = births / lead(pop) * 1000
-  )
-check
+  select(shortname, year, pop, poplag, births, rbirths) |>
+  mutate(avgpop = (pop + poplag) / 2, crbirths = births / avgpop * 1000) |>
+  relocate(avgpop, .after = poplag)
+
+check |>
+  knitr::kable()
+
 
 ```
 
 ### Interpolate and adjust Census births data
+
+```{r}
+
+# calculate improved births for decennial census years
+df2 <- df
+
+```

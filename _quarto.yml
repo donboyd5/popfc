@@ -68,3 +68,12 @@ book:
 
 # But do not ignore this file
 # !.gitignore  # uncomment
+
+# ---
+# editor_options: 
+#   chunk_output_type: console
+# editor:
+#   markdown:
+#     canonical: true  
+# ---
+

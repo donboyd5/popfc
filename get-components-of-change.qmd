@@ -8,6 +8,8 @@ editor:
 
 # Get County Components of Change
 
+CAUTION: The Census Bureau produces postcensal components of change (births, deaths, net migration) where initial year + components foot to subsequent year. After a new decennial census, they construct intercensal estimates that smooth the path for TOTAL population from one decennial census to the next. However, they do not prepare revised components of change that fit with these smoothed estimates. Thus, we do not have data that provide internally consistent components of change that walk from one decennial census to the next.
+
 ## Links to Census Components of Change
 
 https://www2.census.gov/programs-surveys/popest/datasets/
@@ -114,6 +116,7 @@ check4 <- read_csv(fpaths[3]) |> filter(STATE == "36", COUNTY == "000")
 ## Clean data and save cleaned data
 
 ```{r}
+#| label: coc-clean
 
 cocraw <- readRDS(fs::path(DWORK, "coc_raw.rds"))
 
@@ -202,25 +205,85 @@ coc6 <- coc5 |>
   mutate(poplag = lag(pop), .by = c(geotype, stfips, cntyfips)) |>
   relocate(pop, poplag, .after = year)
 
-saveRDS(coc6, fs::path(DWORK, "cocwide.rds"))
+```
+
+## Adjust births, deaths, and resid
+
+```{r}
+#| label: adjust-births-deaths-resid
+
+# calculate improved births and deaths for decennial census years
+coc7 <- coc6 |>
+  mutate(
+    avgpop = (pop + poplag) / 2,
+    abirths = avgpop * rbirths / 1000,
+    adeaths = avgpop * rdeaths / 1000,
+    anatchg = abirths - adeaths,
+    aresid = npopchg - anatchg - netmig,
+  ) |>
+  relocate(avgpop, .after = poplag) |>
+  relocate(abirths, .after = births) |>
+  relocate(adeaths, .after = deaths) |>
+  relocate(aresid, .after = resid)
+
+```
+
+```{r}
+#| label: check-adjustments
+
+cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+df <- coc7 |>
+  filter(stfips == "36", shortname == cnty) |>
+  select(
+    stfips,
+    cntyfips,
+    shortname,
+    year,
+    births,
+    abirths,
+    deaths,
+    adeaths,
+    resid,
+    aresid
+  ) |>
+  pivot_longer(-c(stfips, cntyfips, shortname, year))
+
+cvar <- "resid" # deaths births resid
+df |>
+  filter(str_detect(name, cvar)) |>
+  ggplot(aes(year, value, colour = name)) +
+  geom_point() +
+  geom_line() +
+  # geom_hline(yintercept = 0) +
+  ggtitle(paste(cnty, cvar))
+
+```
+
+
+## Save final components of change file
+
+```{r}
+saveRDS(coc7, fs::path(DWORK, "cocwide.rds"))
 # saveRDS(coc5, fs::path(DWORK, "coclong.rds"))
 
 ```
 
 ## Explore
 
+
+
 ```{r}
 
-coc <- readRDS(fs::path(DWORK, "coclong.rds"))
+tmp <- cocraw |>
+  filter(stfips == "01", cntyfips == "001", year %in% c(2000, 2009, 2010)) |>
+  filter(variable %in% c("popestimate", "censuspop", "estimatesbase"))
+tmp
+
+coc <- readRDS(fs::path(DWORK, "cocwide.rds"))
 glimpse(coc)
 
-df <- coc |>
-  filter(stfips == "36", shortname == "Washington")
 
-df2 <- df
-count(df, variable)
-
-cvar <- "imig" # deaths netmig resid dmig imig pop
+cvar <- "deaths" # deaths netmig resid dmig imig pop
 # rural counties ~ 1 hr from a city
 cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
 coc |>
@@ -230,7 +293,7 @@ coc |>
   geom_point() +
   geom_line() +
   # geom_hline(yintercept = 0) +
-  ggtitle(paste(cnty, cvar, cvtype))
+  ggtitle(paste(cnty, cvar))
 
 abc
 

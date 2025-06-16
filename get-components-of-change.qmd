@@ -228,10 +228,18 @@ coc7 <- coc6 |>
 
 ```
 
+## Save final components of change file
+
+```{r}
+saveRDS(coc7, fs::path(DWORK, "cocwide.rds"))
+```
+
+## Explore
+
 ```{r}
 #| label: check-adjustments
 
-cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+cnty <- "Albany" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
 df <- coc7 |>
   filter(stfips == "36", shortname == cnty) |>
   select(
@@ -254,22 +262,10 @@ df |>
   ggplot(aes(year, value, colour = name)) +
   geom_point() +
   geom_line() +
-  # geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 0) + # use for resid
   ggtitle(paste(cnty, cvar))
 
 ```
-
-
-## Save final components of change file
-
-```{r}
-saveRDS(coc7, fs::path(DWORK, "cocwide.rds"))
-# saveRDS(coc5, fs::path(DWORK, "coclong.rds"))
-
-```
-
-## Explore
-
 
 
 ```{r}

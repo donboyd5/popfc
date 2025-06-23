@@ -42,8 +42,8 @@ mage_order <- c(
 
 ```{r}
 
-df <- readRDS(fs::path(DWORK, "cocwide.rds"))
-glimpse(df)
+coc1 <- readRDS(fs::path(DWORK, "cocwide.rds"))
+glimpse(coc1)
 
 
 ```
@@ -55,7 +55,8 @@ For example, birth rate in 2018 = births in 2018 / avg pop of 2018 and 2017, x 1
 
 ```{r}
 cnty <- "Westchester" # Albany Saratoga Washington Westchester
-check <- df
+check <- coc1 |>
+  filter(stfips == "36", shortname == cnty)
 
 check |>
   knitr::kable()
@@ -71,7 +72,7 @@ check |>
 fname <- "Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250616.csv"
 fpath <- fs::path(DNYG, fname)
 
-df2 <- vroom::vroom(fpath)
+births1 <- vroom::vroom(fpath)
 
 ```
 
@@ -80,6 +81,9 @@ df2 <- vroom::vroom(fpath)
 # fertility rates (and birth rates)
 fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_County__Beginning_2008_20250616.csv"
 
+fpath <- fs::path(DNYG, fname)
+frates1 <- vroom::vroom(fpath)
+glimpse(frates1)
 
 ```
 
@@ -87,12 +91,12 @@ fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_C
 
 ```{r}
 
-glimpse(df)
-b1 <- df |>
+glimpse(coc1)
+b1 <- coc1 |>
   filter(stfips == "36", geotype == "county") |>
   select(stfips, cntyfips, shortname, year, pop, abirths)
 
-b2 <- df2 |>
+b2 <- births1 |>
   select(year = Year, shortname = County, mage = 4, births = 5) |>
   filter(mage == "Total")
 

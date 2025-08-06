@@ -12,21 +12,9 @@ https://www2.census.gov/programs-surveys/popest/datasets/
 ```{r}
 #| label: setup
 
-library(tidyverse)
-library(readxl)
-library(vroom)
-library(fs)
-library(skimr)
-library(Hmisc)
-library(btools)
-
-# ns(options())
-
-dnysdol <- here::here("data", "nysdol")
-dnysdoh <- here::here("data", "nysdoh")
-dcenpop <- here::here("data", "census", "levels_components")
-
+source(here::here("setup.R"))
 ```
+
 
 ## Annual population Census Population Estimates Program via data.ny.gov (NYSDOL)
 
@@ -48,28 +36,28 @@ url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with qu
 
 # alternative link to the data found via U.S. data.gov
 # https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
-# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD" 
+# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD"
 
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
-download.file(url, fs::path(dnysdol, fname))
+download.file(url, fs::path(DNYSDOL, fname))
 
 ```
 
 ```{r}
 #| label: read-county-pop
 
-
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
 fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
 
-fpath <- fs::path(dnysdol, fname)
+fpath <- fs::path(DNYSDOL, fname)
 
-df <- vroom(fpath, col_types="ccicn")
+df <- vroom(fpath, col_types = "ccicn")
 glimpse(df)
 summary(df) # 1970-2023
 
-df1 <- df |> 
-  select(fips=1, area=2, year=3, program=4, pop=5) |> 
+
+df1 <- df |>
+  select(fips = 1, area = 2, year = 3, program = 4, pop = 5) |>
   mutate(cocode = str_sub(fips, 3, -1))
 
 cocodes <- count(df1, fips, cocode, area)
@@ -77,27 +65,29 @@ cocodes <- count(df1, fips, cocode, area)
 # 091, 113 115
 codes <- c("083", "091", "113", "115")
 
-df1 |> 
-  filter(cocode %in% codes) |> 
+df1 |>
+  filter(cocode %in% codes) |>
   ggplot(aes(year, pop)) +
   geom_line() +
   geom_point() +
-  facet_wrap(~cocode + area, scales = "free_y")
+  facet_wrap(~ cocode + area, scales = "free_y")
 
 baseyear <- 2010
-df1 |> 
-  filter(cocode %in% codes, year >= baseyear) |> 
-  mutate(ipop = pop / pop[year == baseyear] - 1, .by=cocode) |> 
-  ggplot(aes(year, ipop, colour=area)) +
+df1 |>
+  filter(cocode %in% codes, year >= baseyear) |>
+  mutate(ipop = pop / pop[year == baseyear] - 1, .by = cocode) |>
+  ggplot(aes(year, ipop, colour = area)) +
   geom_line() +
   geom_point() +
   geom_hline(yintercept = 0) +
-  scale_y_continuous(breaks = seq(-.2, .2, .02), 
-                     labels = scales::label_percent())
+  scale_y_continuous(
+    breaks = seq(-.2, .2, .02),
+    labels = scales::label_percent()
+  )
 
-df1 |> 
-  filter(cocode=="115") |> 
-  arrange(year) |> 
+df1 |>
+  filter(cocode == "115") |>
+  arrange(year) |>
   tail()
 
 
@@ -119,43 +109,55 @@ https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.
 
 # https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf
 
-fname <- "co-est2019-alldata.csv"
-fpath <- fs::path(dcenpop, fname)
+# fname <- "co-est2019-alldata.csv"
+fname <- "co-est2020-alldata.csv"
+fpath <- fs::path(DCENPOP, "2010-2020", fname)
 
 # the rate variables must be per thousand I think
 
 df <- vroom(fpath, col_types = cols(.default = col_character()))
 
 tmp <- df |>
-  rename_with(str_to_lower) |> 
+  rename_with(str_to_lower) |>
   filter(state == "36", county == "115")
-tmp |> 
-  pivot_longer(cols = -c(sumlev:ctyname)) |> 
+tmp |>
+  pivot_longer(cols = -c(sumlev:ctyname)) |>
   filter(str_detect(name, "2018"))
 
-tmp |> 
-  pivot_longer(cols = -c(sumlev:ctyname)) |> 
+tmp |>
+  pivot_longer(cols = -c(sumlev:ctyname)) |>
   filter(str_detect(name, "rdeath")) # rnatural rnetmig
 
-vars <-  c("rbirth", "rdeath", "rnetmig")
-vars <-  c("rbirth", "rdeath", "rinternationalmig", "rdomesticmig")
-vars <-  c("rbirth", "rdeath", "rinternationalmig", "rdomesticmig", "rnaturalinc")
+vars <- c("rbirth", "rdeath", "rnetmig")
+vars <- c("rbirth", "rdeath", "rinternationalmig", "rdomesticmig")
+vars <- c(
+  "rbirth",
+  "rdeath",
+  "rinternationalmig",
+  "rdomesticmig",
+  "rnaturalinc"
+)
 
 
-tmp |> 
-  pivot_longer(cols = -c(sumlev:ctyname)) |> 
-  mutate(year = str_sub(name, -4, -1) |> as.integer(),
-         var = str_remove(name, as.character(year)),
-         value = as.numeric(value),
-         value = value / 1000,
-         value = ifelse(var == "rdeath", -value, value)) |> 
-  filter(var %in% vars) |> 
+tmp |>
+  pivot_longer(cols = -c(sumlev:ctyname)) |>
+  mutate(
+    year = str_sub(name, -4, -1) |> as.integer(),
+    var = str_remove(name, as.character(year)),
+    value = as.numeric(value),
+    value = value / 1000,
+    value = ifelse(var == "rdeath", -value, value)
+  ) |>
+  filter(var %in% vars) |>
   ggplot(aes(year, value, colour = var)) +
-  geom_line(size=1) +
-  geom_point(size=2) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
   geom_hline(yintercept = 0) +
   scale_x_continuous(breaks = 2010:2020) +
-  scale_y_continuous(breaks = seq(-.01, .02, .002), labels = scales::label_percent()) +
+  scale_y_continuous(
+    breaks = seq(-.01, .02, .002),
+    labels = scales::label_percent()
+  ) +
   ggtitle("Change in population by cause as % of starting (?) population")
 
 ```
@@ -172,7 +174,7 @@ https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/tota
 # url <- "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx"
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
 fname <- fs::path_file(url)
-download.file(url, fs::path(dcenpop, fname), mode="wb")
+download.file(url, fs::path(DNYSDOL, fname), mode = "wb")
 
 
 ```
@@ -191,49 +193,55 @@ https://www.health.ny.gov/statistics/vital_statistics/
 ```{r}
 
 fname <- "New_York_State_Population_Data__Beginning_2003_20250419.csv"
-fpath <- fs::path(dnysdoh, fname)
+fpath <- fs::path(DNYSDOH, fname)
 
 df <- vroom(fpath, col_types = cols(.default = col_character()))
 glimpse(df)
 Hmisc::describe(df)
 skim(df)
 
-
-df1 <- df |> 
-  select(year=1, 
-         fagegroup=2, agegroup=3,
-         fgender=4, gender=5,
-         frethnic=6, rethnic=7, 
-         cocode=8, area=9,
-         pop=10) |> 
-  mutate(across(c(year, fagegroup, fgender, frethnic), as.integer),
-         pop = as.numeric(pop))
+df1 <- df |>
+  select(
+    year = 1,
+    fagegroup = 2,
+    agegroup = 3,
+    fgender = 4,
+    gender = 5,
+    frethnic = 6,
+    rethnic = 7,
+    cocode = 8,
+    area = 9,
+    pop = 10
+  ) |>
+  mutate(
+    across(c(year, fagegroup, fgender, frethnic), as.integer),
+    pop = as.numeric(pop)
+  )
 summary(df1)
 count(df1, fagegroup, agegroup) # changes
-count(df1 |> filter(year==max(year)), fagegroup, agegroup) # changes
+count(df1 |> filter(year == max(year)), fagegroup, agegroup) # changes
 count(df1, fgender, gender) # good 0 is total
 count(df1, frethnic, rethnic) # good 0 is total
 tmp <- count(df1, cocode, area) # Washington is 61
 
 # put latest age codes on the data
-agecodes <- df1 |> 
-  filter(year==max(year)) |> 
-  select(fagegroup, agegroup) |> 
-  distinct() |> 
+agecodes <- df1 |>
+  filter(year == max(year)) |>
+  select(fagegroup, agegroup) |>
+  distinct() |>
   arrange(fagegroup)
 agecodes
 
 
-df2 <- df1 |> 
-  select(-agegroup) |> 
+df2 <- df1 |>
+  select(-agegroup) |>
   left_join(agecodes, by = join_by(fagegroup))
 
-df2 |> 
-  filter(cocode=="61", fgender==0, frethnic==0) |> 
-  mutate(pct=pop / pop[fagegroup == 0],
-         .by=c(year, cocode)) |> 
-  filter(fagegroup != 0) |> 
-  ggplot(aes(year, pct, colour=agegroup)) +
+df2 |>
+  filter(cocode == "61", fgender == 0, frethnic == 0) |>
+  mutate(pct = pop / pop[fagegroup == 0], .by = c(year, cocode)) |>
+  filter(fagegroup != 0) |>
+  ggplot(aes(year, pct, colour = agegroup)) +
   geom_line() +
   geom_point()
 
@@ -243,38 +251,32 @@ df2 |>
 #   rep = c("Strong republican", "Not str republican"),
 #   ind = c("Ind,near rep", "Independent", "Ind,near dem"),
 #   dem = c("Not str democrat", "Strong democrat")
-  
-df3 <- df2 |> 
-  filter(cocode=="61", fgender==0, frethnic==0) |> 
-  mutate(pct=pop / pop[fagegroup == 0],
-         .by=c(year, cocode)) |> 
-  filter(fagegroup != 0) |> 
-  mutate(fagegroup = as.factor(fagegroup),
-         agegroup2 = fct_collapse(fagegroup,
-                              age_00_19 = 1:3,
-                              age_20_34 = 4:5,
-                              age_35_44 = 6,
-                              age_45_54 = 7,
-                              age_55_64 = 8,
-                              age_65_74 = 9,
-                              age_75_99 = 10:11)) |> 
-  summarise(pct = sum(pct),
-            .by = c(year, cocode, area, agegroup2))
-                              
+
+df3 <- df2 |>
+  filter(cocode == "61", fgender == 0, frethnic == 0) |>
+  mutate(pct = pop / pop[fagegroup == 0], .by = c(year, cocode)) |>
+  filter(fagegroup != 0) |>
+  mutate(
+    fagegroup = as.factor(fagegroup),
+    agegroup2 = fct_collapse(
+      fagegroup,
+      age_00_19 = 1:3,
+      age_20_34 = 4:5,
+      age_35_44 = 6,
+      age_45_54 = 7,
+      age_55_64 = 8,
+      age_65_74 = 9,
+      age_75_99 = 10:11
+    )
+  ) |>
+  summarise(pct = sum(pct), .by = c(year, cocode, area, agegroup2))
+
 df3 |>
-  ggplot(aes(year, pct, colour=agegroup2)) +
+  ggplot(aes(year, pct, colour = agegroup2)) +
   geom_line() +
   geom_point() +
-  scale_y_continuous(limits=c(0, NA_real_),
-                     breaks=seq(0, 30, .02))
+  scale_y_continuous(limits = c(0, NA_real_), breaks = seq(0, 30, .02))
 
-
-```
-
-
-
-
-```{r}
 
 ```
 
@@ -306,29 +308,36 @@ download.file(url, fpath, mode = "wb")
 # fname <- "County_Employment_Data_20250419.csv"
 # fpath <- fs::path(dnysdol, fname)
 
-df <- vroom(fpath, skip=1, col_names=c("area", "year", "month", "lf", "emp", "unemp", "ur"), col_types="ciinnnn")
+df <- vroom(
+  fpath,
+  skip = 1,
+  col_names = c("area", "year", "month", "lf", "emp", "unemp", "ur"),
+  col_types = "ciinnnn"
+)
 glimpse(df)
 summary(df)
 
 areas <- count(df, area) # just the 62 counties
 
-df1 <- df |> 
-  mutate(date = as.Date(paste0(year, "-", month, "-1")),
-         area = str_remove(area, " County"))
+df1 <- df |>
+  mutate(
+    date = as.Date(paste0(year, "-", month, "-1")),
+    area = str_remove(area, " County")
+  )
 count(df1, date)
 summary(df1) # through Feb 2025
 
 counties <- c("Saratoga", "Warren", "Washington")
-df1 |> 
-  filter(area %in% counties) |> 
-  filter(year(date) >= 2022) |> 
-  ggplot(aes(date, ur, colour=area)) +
+df1 |>
+  filter(area %in% counties) |>
+  filter(year(date) >= 2022) |>
+  ggplot(aes(date, ur, colour = area)) +
   geom_line() +
   geom_point()
 
-df1 |>  
-  filter(area %in% counties) |> 
-  filter(year(date) >= 2022) |> 
+df1 |>
+  filter(area %in% counties) |>
+  filter(year(date) >= 2022) |>
   ggplot(aes(date, lf)) +
   geom_line() +
   geom_point() +
@@ -342,7 +351,6 @@ df1 |>
 
 ```{r}
 # https://statistics.labor.ny.gov/qcew.zip
-
 
 ```
 

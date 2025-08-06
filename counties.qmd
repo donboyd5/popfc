@@ -55,6 +55,7 @@ df <- vroom(fpath, col_types = "ccicn")
 glimpse(df)
 summary(df) # 1970-2023
 
+
 df1 <- df |>
   select(fips = 1, area = 2, year = 3, program = 4, pop = 5) |>
   mutate(cocode = str_sub(fips, 3, -1))
@@ -108,8 +109,9 @@ https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-total.
 
 # https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf
 
-fname <- "co-est2019-alldata.csv"
-fpath <- fs::path(DCENPOP, fname)
+# fname <- "co-est2019-alldata.csv"
+fname <- "co-est2020-alldata.csv"
+fpath <- fs::path(DCENPOP, "2010-2020", fname)
 
 # the rate variables must be per thousand I think
 
@@ -148,7 +150,7 @@ tmp |>
   ) |>
   filter(var %in% vars) |>
   ggplot(aes(year, value, colour = var)) +
-  geom_line(size = 1) +
+  geom_line(linewidth = 1) +
   geom_point(size = 2) +
   geom_hline(yintercept = 0) +
   scale_x_continuous(breaks = 2010:2020) +
@@ -197,7 +199,6 @@ df <- vroom(fpath, col_types = cols(.default = col_character()))
 glimpse(df)
 Hmisc::describe(df)
 skim(df)
-
 
 df1 <- df |>
   select(

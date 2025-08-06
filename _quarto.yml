@@ -7,8 +7,10 @@ format:
     theme: cosmo
     code-fold: true
     number-depth: 5
+    toc: true
+    toc-location: right    
     toc-depth: 4
-    toc-expand: true
+    toc-expand: false
 
 editor_options:
   chunk_output_type: console  

@@ -36,6 +36,7 @@ mage_order <- c(
   "Total"
 )
 
+
 ```
 
 ## Get and smooth Census data on births
@@ -115,3 +116,69 @@ b12 |>
   ggtitle(cnty)
 
 ```
+
+## Estimate births: Apply fertility rates to women by age group
+
+```{r}
+
+frates2 <- frates1 |>
+  filter(str_detect(Measure, "Fertility")) |>
+  select(year = 1, county = 3, mage = 6, frate = 7)
+count(frates2, year) # 2008-2022
+tmp <- count(frates2, county) # 65:  57, 5, New York City, New York State, Rest of State; "St Lawrence" no period
+count(frates2, mage)
+
+frates3 <- frates2 |>
+  filter(!county %in% c("New York City", "New York State", "Rest of State")) |>
+  mutate(county = ifelse(county == "St Lawrence", "St. Lawrence", county))
+tmp <- count(frates3, county) # 62
+
+
+agesex1 <- readRDS(fs::path(DWORK, "cenpop_sya_sex.rds"))
+tmp <- count(agesex1, area) # 62
+agesex2 <- agesex1 |>
+  filter(name == "popf") |>
+  mutate(county = str_remove(area, " County"))
+tmp <- count(agesex2, county) # 62
+agesex3 <- agesex2 |>
+  select(stfips, cntyfips, county, year, age, fpop = value) |>
+  mutate(
+    mage = case_when(
+      age < 15 ~ "<15",
+      age %in% 15:17 ~ "15-17",
+      age %in% 18:19 ~ "18-19",
+      age %in% 20:24 ~ "20-24",
+      age %in% 25:29 ~ "25-29",
+      age %in% 30:34 ~ "30-34",
+      age %in% 35:39 ~ "35-39",
+      age %in% 40:44 ~ "40-44",
+      age >= 45 ~ "45+",
+      .default = "ERROR"
+    )
+  )
+
+
+
+  
+# mutate(
+#   magecut = cut(age, c(0, 15, 17, 19, 24, 29, 34, 39, 44, Inf), right = FALSE)
+# )
+count(agesex3, mage)
+tmp <- count(agesex3, magecut, age)
+
+magelink <- read_csv(
+  "magecut, mage
+[0,15), <15
+[15,17), 15-17
+[17,19), 18
+[19,24), 
+[24,29), 
+[29,34), 
+[34,39), 
+[39,44), 
+[44,Inf), 
+"
+)
+
+```
+

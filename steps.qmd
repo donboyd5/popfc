@@ -116,7 +116,9 @@ Data sources:
 ```{r}
 #| label: data.ny.gov
 
-fname <- "Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250604.csv"
+# data_raw\data_ny_gov\Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250616.csv
+# fname <- "Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250604.csv"
+fname <- "Vital_Statistics_Live_Births_by_Mother_s_Age_and_Resident_County__Beginning_2008_20250616.csv"
 fpath <- fs::path(DNYG, fname)
 
 df1 <- vroom::vroom(fpath)
@@ -185,7 +187,7 @@ data.ny.gov
 #| label: fertility-rates
 
 # fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_County__Beginning_2008_20250604.csv"
-fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_County__Beginning_2008_20250611.csv"
+fname <- "Vital_Statistics_Live_Births_and_Fertility_Rates_by_Mother_s_Age_and_County__Beginning_2008_20250616.csv"
 fpath <- fs::path(DNYG, fname)
 
 # url <- "https://health.data.ny.gov/api/odata/v4/c2tx-jecb"

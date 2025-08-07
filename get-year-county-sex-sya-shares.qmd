@@ -160,7 +160,11 @@ summary(df2)
 # washington county check
 df2 |>
   filter(cntyfips == "115") |>
-  summarise(value = sum(value), share = sum(share))
+  summarise(
+    value = sum(value),
+    share = sum(share),
+    .by = c(stfips, cntyfips, area, year)
+  )
 
 saveRDS(df2, fs::path(DWORK, "cenpop_sya_sex.rds"))
 

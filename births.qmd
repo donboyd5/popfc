@@ -158,13 +158,11 @@ agesex3 <- agesex2 |>
   )
 
 
-
-  
 # mutate(
 #   magecut = cut(age, c(0, 15, 17, 19, 24, 29, 34, 39, 44, Inf), right = FALSE)
 # )
 count(agesex3, mage)
-tmp <- count(agesex3, magecut, age)
+# tmp <- count(agesex3, magecut, age)
 
 magelink <- read_csv(
   "magecut, mage

@@ -160,7 +160,8 @@ df |>
   scale_y_continuous(
     breaks = seq(-.2, .2, .02),
     labels = scales::label_percent()
-  )
+  ) +
+  ggtitle("% change in population since 2010, selected area counties")
 
 df |>
   filter(cocode == "115") |>
@@ -299,12 +300,12 @@ df |>
 # https://www2.census.gov/programs-surveys/popest/datasets/1970-1980/national/asrh/e7079co.zip
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/1970-1980/national/asrh/e7079co.zip"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/1980-1990/counties/totals/comp8090.zip"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-alldata-4-25-13.pdf
@@ -316,32 +317,32 @@ download.file(url, fs::path(dir, fname), mode = "wb")
 # https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-tot.csv
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-tot.csv"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # intercensal age-group breakdowns that appear to foot to population totals KEY FILE
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-agesex-5yr.csv"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # intercensal agegroup-sex-race-hispanic (asrh) that appear to foot to population totals
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-sexracehisp.csv"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "levels_components")
+dir <- fs::path(DCENPOP, "levels_components")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # 2010-2020 ----
 # intercensal population totals
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # intercensal population totals AND components of change, state and county -- IMPORTANT FILE
 url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv"
 fname <- fs::path_file(url)
-dir <- fs::path(dcenpop, "totals")
+dir <- fs::path(DCENPOP, "totals")
 download.file(url, fs::path(dir, fname), mode = "wb")
 
 # intercensal pop totals county, city town -- IMPORTANT

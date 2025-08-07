@@ -302,7 +302,7 @@ limit <- 50000 # 50k max; LAUS has about 26k records now, so no problem
 url <- paste0("https://data.ny.gov/resource/4v74-29eq.csv?$limit=", limit) # all fields will be character with quotes, that's ok
 fname_base <- "County_Employment_Data_"
 fname <- paste0(fname_base, today(), ".csv")
-fpath <- fs::path(dnysdol, fname)
+fpath <- fs::path(DNYSDOL, fname)
 download.file(url, fpath, mode = "wb")
 
 # fname <- "County_Employment_Data_20250419.csv"

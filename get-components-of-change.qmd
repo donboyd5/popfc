@@ -291,6 +291,4 @@ coc |>
   # geom_hline(yintercept = 0) +
   ggtitle(paste(cnty, cvar))
 
-abc
-
 ```

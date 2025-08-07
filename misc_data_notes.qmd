@@ -35,7 +35,7 @@ source(here::here("setup.R"))
 #| eval: false
 
 fname <- "New_York_State_Population_Data__Beginning_2003_20250419.csv"
-fpath <- fs::path(dnysdoh, fname)
+fpath <- fs::path(DNYSDOH, fname)
 
 df <- vroom(fpath, col_types = cols(.default = col_character()))
 glimpse(df)
@@ -80,13 +80,15 @@ df2 <- df1 |>
   select(-agegroup) |>
   left_join(agecodes, by = join_by(fagegroup))
 
+cnty <- "61"
 df2 |>
-  filter(cocode == "61", fgender == 0, frethnic == 0) |>
+  filter(cocode == cnty, fgender == 0, frethnic == 0) |>
   mutate(pct = pop / pop[fagegroup == 0], .by = c(year, cocode)) |>
   filter(fagegroup != 0) |>
   ggplot(aes(year, pct, colour = agegroup)) +
   geom_line() +
-  geom_point()
+  geom_point() +
+  ggtitle(paste0("Population share?? for county code: ", cnty))
 
 # fct_collapse(gss_cat$partyid,
 #   missing = c("No answer", "Don't know"),
@@ -96,7 +98,7 @@ df2 |>
 #   dem = c("Not str democrat", "Strong democrat")
 
 df3 <- df2 |>
-  filter(cocode == "61", fgender == 0, frethnic == 0) |>
+  filter(cocode == cnty, fgender == 0, frethnic == 0) |>
   mutate(pct = pop / pop[fagegroup == 0], .by = c(year, cocode)) |>
   filter(fagegroup != 0) |>
   mutate(
@@ -118,7 +120,11 @@ df3 |>
   ggplot(aes(year, pct, colour = agegroup2)) +
   geom_line() +
   geom_point() +
-  scale_y_continuous(limits = c(0, NA_real_), breaks = seq(0, 30, .02))
+  scale_y_continuous(limits = c(0, NA_real_), breaks = seq(0, 30, .02)) +
+  ggtitle(paste0(
+    "Population share?? for collapsed age groups, county code: ",
+    cnty
+  ))
 
 
 ```
@@ -144,11 +150,11 @@ limit <- 50000 # 50k max; LAUS has about 26k records now, so no problem
 url <- paste0("https://data.ny.gov/resource/4v74-29eq.csv?$limit=", limit) # all fields will be character with quotes, that's ok
 fname_base <- "County_Employment_Data_"
 fname <- paste0(fname_base, today(), ".csv")
-fpath <- fs::path(dnysdol, fname)
+fpath <- fs::path(DNYSDOL, fname)
 download.file(url, fpath, mode = "wb")
 
-# fname <- "County_Employment_Data_20250419.csv"
-# fpath <- fs::path(dnysdol, fname)
+fname <- "County_Employment_Data_20250419.csv"
+fpath <- fs::path(DNYSDOL, fname)
 
 df <- vroom(
   fpath,
@@ -175,7 +181,8 @@ df1 |>
   filter(year(date) >= 2022) |>
   ggplot(aes(date, ur, colour = area)) +
   geom_line() +
-  geom_point()
+  geom_point() +
+  ggtitle("Unemployment rate")
 
 df1 |>
   filter(area %in% counties) |>
@@ -183,7 +190,8 @@ df1 |>
   ggplot(aes(date, lf)) +
   geom_line() +
   geom_point() +
-  facet_wrap(~area, scales = "free_y")
+  facet_wrap(~area, scales = "free_y") +
+  ggtitle("Labor force")
 
 ```
 

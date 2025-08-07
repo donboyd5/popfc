@@ -190,7 +190,7 @@ df1 |>
   ggplot(aes(date, lf)) +
   geom_line() +
   geom_point() +
-  facet_wrap(~area, scales = "free_y")+
+  facet_wrap(~area, scales = "free_y") +
   ggtitle("Labor force")
 
 ```

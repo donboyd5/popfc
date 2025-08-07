@@ -36,7 +36,7 @@ book:
     - get-year-county-sex-sya-shares.qmd
     - births.qmd
     - steps.qmd
-    # - misc_data_notes.qmd
+    - misc_data_notes.qmd
     # - counties.qmd
     # - get-county-data.qmd
   # page-footer:

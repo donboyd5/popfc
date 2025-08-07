@@ -35,7 +35,7 @@ source(here::here("setup.R"))
 #| eval: false
 
 fname <- "New_York_State_Population_Data__Beginning_2003_20250419.csv"
-fpath <- fs::path(dnysdoh, fname)
+fpath <- fs::path(DNYSDOH, fname)
 
 df <- vroom(fpath, col_types = cols(.default = col_character()))
 glimpse(df)

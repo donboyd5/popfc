@@ -52,7 +52,7 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 - Output directories: `data_interim/`, `data_final/`
 - R project reference materials (`.qmd`, `setup.R`, `_quarto.yml`, `images/`, `CLAUDE.md`) preserved to `docs/r_reference/`
 - Smoke tests: **4 passed**
-- Git: feature branch `feat/phase-1-data-reconciliation` on primary tree; worktree `.worktree-main/` pinned to `main` for docs edits; repo at https://github.com/donboyd5/popfc
+- Git: feature branch `feat/phase-1-data-reconciliation` on primary tree; worktree `.worktree-docs/` pinned to long-lived `docs/main` branch (docs commits land there and are merged into `main` via normal branch flow, so `main` never receives direct commits); repo at https://github.com/donboyd5/popfc
 
 ### Phase 1 — IN PROGRESS
 
@@ -293,7 +293,7 @@ Copy-paste into a new session to continue:
 > - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Coercion failures warn (don't silently mask). Apply this pattern to every new loader.
 > - R project at `popfc_R/` is reference only; its docs are preserved at `docs/r_reference/`. It will eventually be deleted — **do not feel constrained by the R implementation; always apply Python best practices.**
 > - Scope: cohort-component engine is county-agnostic (FIPS param). Primary output for Washington County + towns; validation-cohort output for 5 neighbor counties; sanity-sweep totals across all 62.
-> - Git workflow: **never work on main**. Primary tree is on a feature branch; `.worktree-main/` is pinned to `main` for docs edits. Push feature branches to GitHub; merges to main are lightweight (solo repo, PRs optional).
+> - Git workflow: **never work on main**. Primary tree is on a feature branch (code). Worktree `.worktree-docs/` is pinned to a long-lived `docs/main` branch (docs). Both code and docs merge into `main` via normal branch flow — `main` never receives direct commits. Push feature branches to GitHub; merges to main are lightweight (solo repo, PRs optional).
 >
 > Check `docs/planning.md` "Current Status" and "Phase 1 still-to-do" sections for what's next. Check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance (including the string-first preference).
 

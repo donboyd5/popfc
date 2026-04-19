@@ -52,6 +52,43 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 - Output directories: `data_interim/`, `data_final/`
 - R project reference materials (`.qmd`, `setup.R`, `_quarto.yml`, `images/`, `CLAUDE.md`) preserved to `docs/r_reference/`
 - Smoke tests: **4 passed**
+- Git: feature branch `feat/phase-1-data-reconciliation` on primary tree; worktree `.worktree-main/` pinned to `main` for docs edits; repo at https://github.com/donboyd5/popfc
+
+### Phase 1 — IN PROGRESS
+
+**Loaders built** (`src/popfc/data/`):
+
+- `_common.py` — canonical long-format schemas (`POP_LONG_COLUMNS`, `COMPONENTS_LONG_COLUMNS`), FIPS helpers, and **string-first ingestion helpers** (`read_csv_strings`, `coerce_numeric`). All raw CSVs are read with `dtype=str` and explicitly coerced at the melt step so data anomalies surface as warnings instead of being silently masked by pandas' auto-inference.
+- `census.py` — three PEP vintage loaders (2000–2010 intercensal, 2010–2020 intercensal, 2020+ postcensal) plus `load_all_pep()` stack. Emits both population totals and components of change, including the RATE columns (`RBIRTH`, `RDEATH`, etc., per-1000 mid-year average population) used in the R project's "adjusted births/deaths" formula for decennial seams.
+- `nysdol.py` — NYSDOL annual estimates 1970–2023, program-type labels mapped to canonical `kind` values (`estimate` / `intercensal` / `census`).
+
+All loaders accept `path` and `vintage` parameters so swapping in a newer file is a one-line change (see "Deferred: data refresh pipeline" in MEMORY.md).
+
+**Notebook 01 — `notebooks/01_population_reconciliation.ipynb`** complete and executing cleanly end-to-end. Produces:
+
+- `data_interim/population_all_sources.parquet` — 5,796 rows (stacked raw PEP + NYSDOL for QA)
+- `data_interim/population_reconciled.parquet` — **1,575 rows** (63 entities × 25 years 2000–2024, one authoritative value per `(geoid, year)`)
+
+Companion generator `notebooks/_build_01_reconciliation.py` produces the notebook from Python source so cells can be regenerated deterministically.
+
+#### Reconciliation rules applied (Phase 1)
+
+1. **Decennial anchors** (2000, 2010, 2020) — NYSDOL "Census Base Population" (`kind='census'`). Single curated series covers all three decennials consistently; Census PEP's `CENSUS2010POP` agrees for 2010, and Census encodes the April-1 2020 count as `ESTIMATESBASE2020` which we preserve in the raw stack rather than re-labeling.
+2. **Postcensal years** (2021+) — Census PEP postcensal estimate from the latest vintage (`v2024`).
+3. **Intercensal years** (2001–2019 non-decennial) — NYSDOL intercensal estimate. Rationale: NYSDOL's annual series extends back to 1970 with consistent methodology and was treated as authoritative by the legacy R workflow.
+4. **Vintage overlap resolution** — when two PEP files cover the same `(geoid, year, kind)`, keep the later vintage (v2024 > v2020 > v2010int).
+
+#### Key data-quality finding (carried forward from R)
+
+**Components of change do NOT reconcile across the decennial seam.** Census intercensal estimates smooth the *totals* to hit the decennial count, but the published component series (births, deaths, migration) sums to the *postcensal* total — not the intercensal total. The rate columns (RBIRTH, RDEATH, etc.) combined with mid-year average population can be used to compute "adjusted" counts near the seam; this is documented in `docs/r_reference/get-components-of-change.qmd` and will be revisited in Notebook 02.
+
+#### Phase 1 still-to-do
+
+- Notebook 02 — components audit (Census PEP vs NYSDOH vs NCHS; verify Pop(t) = Pop(t-1) + B − D + NetMig identity)
+- CDC Bridged-Race loader + Notebook 03 — age/sex audit
+- NYSDOH vital-stats loader (independent births/deaths for cross-check)
+- Cornell PAD loader (forecast benchmark)
+- Promote reconciliation logic from the notebook into `src/popfc/reconcile.py` once rules are stable
 
 ### Data already present in `data_raw/`
 
@@ -246,17 +283,19 @@ jupyter lab
 
 Copy-paste into a new session to continue:
 
-> I'm continuing a Python project to forecast annual population for Washington County, NY and its constituent towns. The project root is `/home/donboyd5/Documents/python_projects/popfc/`. The virtualenv is at `.venv/`; the installable package is at `src/popfc/`; Python is 3.12.
+> I'm continuing a Python project to forecast annual population for Washington County, NY and its constituent towns. The project root is `/home/donboyd5/Documents/python_projects/popfc/`. The virtualenv is at `.venv/`; the installable package is at `src/popfc/`; Python is 3.12. The repo is at https://github.com/donboyd5/popfc.
 >
 > **Start by reading `docs/planning.md` in full.** It has the current status, scope decisions, and next steps.
 >
 > Key reminders:
 > - Phase 0 (env + scaffolding) is complete; smoke tests pass.
+> - Phase 1 is partially complete: loaders for Census PEP (3 vintages) and NYSDOL are in `src/popfc/data/`; notebook `01_population_reconciliation.ipynb` produces `data_interim/population_reconciled.parquet` (1,575 rows, 2000–2024, no gaps). See planning.md for reconciliation rules.
+> - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Coercion failures warn (don't silently mask). Apply this pattern to every new loader.
 > - R project at `popfc_R/` is reference only; its docs are preserved at `docs/r_reference/`. It will eventually be deleted — **do not feel constrained by the R implementation; always apply Python best practices.**
 > - Scope: cohort-component engine is county-agnostic (FIPS param). Primary output for Washington County + towns; validation-cohort output for 5 neighbor counties; sanity-sweep totals across all 62.
-> - Phase 1 (data reconciliation) is the immediate priority — it's where the user most wants rigor.
+> - Git workflow: **never work on main**. Primary tree is on a feature branch; `.worktree-main/` is pinned to `main` for docs edits. Push feature branches to GitHub; merges to main are lightweight (solo repo, PRs optional).
 >
-> Check `docs/planning.md` for the "Next Steps" section to see what's in progress. Check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance.
+> Check `docs/planning.md` "Current Status" and "Phase 1 still-to-do" sections for what's next. Check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance (including the string-first preference).
 
 ---
 

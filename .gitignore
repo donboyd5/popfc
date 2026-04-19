@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data directories — not committed (too large, often license-restricted).
+# Raw data is copied from popfc_R/data_raw/ via the setup procedure in README.
+data_raw/
+data_interim/
+data_final/
+
+# Legacy R project — will be deleted when confirmed nothing is lost.
+# Its prose/docs/R code are preserved in docs/r_reference/.
+popfc_R/
+
+# Git worktree for main branch (docs editing from any feature branch).
+.worktree-main/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Build artifacts
+build/
+dist/

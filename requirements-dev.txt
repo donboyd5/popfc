@@ -1,0 +1,7 @@
+# Development tools. Install via:  pip install -r requirements-dev.txt
+# The -r below also pulls in everything from requirements.txt.
+-r requirements.txt
+
+pytest>=8.0
+ruff>=0.3
+nbstripout>=0.7

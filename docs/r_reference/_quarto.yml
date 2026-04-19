@@ -1,0 +1,81 @@
+project:
+  type: book
+  output-dir: _web
+
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    number-depth: 5
+    toc: true
+    toc-location: right    
+    toc-depth: 4
+    toc-expand: false
+
+editor_options:
+  chunk_output_type: console  
+  
+execute:
+  eval: true
+  echo: true # must be true for code folding to work
+  output: false
+  freeze: auto  # auto, true, or false
+
+book:
+  title: "Cambridge-area population forecasts"
+  subtitle: ""
+  author: "Don Boyd"
+  date: today
+  date-format: long
+  chapters:
+    - index.qmd
+    - links.qmd
+    - methodology.qmd
+    - create_county_population_control_totals.qmd
+    - get-components-of-change.qmd
+    - get-year-county-sex-sya-shares.qmd
+    - births.qmd
+    - steps.qmd
+    - misc_data_notes.qmd
+    - counties.qmd
+  # page-footer:
+  #   center: "[Return to main MTA 2025 page](https://boyd-mta2025-links.netlify.app/)"      
+
+
+
+# editor:
+#   markdown:
+#     wrap: 72
+#     canonical: true
+  
+# use qstop shortcut for this
+# ```{r stop_here, echo=FALSE}
+# knitr::knit_exit()
+# ```
+
+# ---
+# output: html_document
+# editor_options: 
+#   chunk_output_type: console
+# ---
+
+# useful reminders of quarto commands:
+# quarto publish netlify --no-render
+# quarto publish netlify --no-browser --no-prompt
+# quarto publish netlify --no-render --no-browser --no-prompt 
+
+# gitignore in a folder
+# Ignore everything in this folder
+# *  # uncomment
+
+# But do not ignore this file
+# !.gitignore  # uncomment
+
+# ---
+# editor_options: 
+#   chunk_output_type: console
+# editor:
+#   markdown:
+#     canonical: true  
+# ---
+

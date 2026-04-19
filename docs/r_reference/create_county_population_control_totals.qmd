@@ -1,0 +1,573 @@
+---
+editor_options: 
+  chunk_output_type: console
+editor:
+  markdown:
+    canonical: true  
+---
+
+# Create County Population Control Totals
+
+https://www2.census.gov/programs-surveys/popest/datasets/
+
+```{r}
+#| label: setup
+
+source(here::here("setup.R"))
+```
+
+Key datasets:
+
+-   NYSDOL annual population - county population totals 1970-recent, all
+    in one place, but not as current as Census Bureau. We get this first
+    because its all-in-one-place data is convenient.
+-   Census population estimates program - population totals
+
+For each dataset:
+
+-   download (optionally)
+-   read
+-   clean as needed
+-   save cleaned file
+
+## NYSDOL: Annual population Census Population Estimates Program via data.ny.gov
+
+**Only run chunks in this section when NYS DOL population data have been
+updated**
+
+NYS Department of Labor gets annual estimates from the Census Bureau.
+The data may be slightly behind what Census has currently. The [data are
+on
+data.ny.gov](https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data).
+
+The 2025-04-20 version has county population totals for 1970-2023. The
+data include Census base, intercensal, and postcensal estimates. Here
+are counts:
+
+![](images/paste-1.png)
+
+There are 62 counties in the data – 5 NYC counties, 57 counties, and a
+New York State total. Units are numbers of people (not thousands).
+
+The raw data look like this:
+
+![](images/paste-3.png)
+
+### Download NYSDOL county pop
+
+```{r}
+#| label: download-nysdol-county-pop
+#| eval: false
+
+# https://data.ny.gov/Government-Finance/Annual-Population-Estimates-for-New-York-State-and/krt9-ym2k/about_data
+# https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD
+
+# export / api endpoint / csv / copy:
+# https://data.ny.gov/resource/krt9-ym2k.csv
+# add the limit:
+urlbase <- "https://data.ny.gov/resource/krt9-ym2k.csv"
+limit <- 50000 # 50k max
+url <- paste0(urlbase, "?$limit=", limit) # all fields will be character with quotes, that's ok
+
+# alternative link to the data found via U.S. data.gov
+# https://catalog.data.gov/dataset/annual-population-estimates-for-new-york-state-and-counties-beginning-1970
+# url <- "https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD"
+
+fname_base <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970"
+fname <- paste0(fname_base, "_", format(today(), "%Y%m%d"), ".csv") # use same date formatting as data.ny.gov
+fname
+download.file(url, fs::path(DNYSDOL, fname))
+
+```
+
+### Read NYSDOL county pop
+
+```{r}
+#| label: read-county-pop
+#| eval: false
+
+# fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250419.csv"
+fname <- "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+
+fpath <- fs::path(DNYSDOL, fname)
+
+df <- vroom(fpath, col_types = "ccicn")
+glimpse(df)
+summary(df) # 1970-2023
+
+df1 <- df |>
+  select(fips = 1, area = 2, year = 3, program = 4, pop = 5) |>
+  mutate(cocode = str_sub(fips, 3, -1))
+count(df1, program)
+
+df2 <- df1 |>
+  mutate(
+    area = str_remove(area, " County"),
+    program = case_when(
+      str_detect(program, "Census Base") ~ "censusbase",
+      str_detect(program, "Intercensal") ~ "intercensal",
+      str_detect(program, "Postcensal") ~ "postcensal",
+      .default = "ERROR"
+    )
+  ) |>
+  select(year, fips, cocode, area, program, pop)
+
+glimpse(df2)
+count(df2, area)
+count(df2, cocode, area)
+count(df2, program)
+count(df2, year) |> ht()
+
+```
+
+### Save NYSDOL county pop
+
+```{r}
+#| label: save-nysdol
+#| eval: false
+
+saveRDS(df2, fs::path(DWORK, "cenpop_nysdol.rds"))
+
+```
+
+### Explore NYSDOL county pop
+
+```{r}
+#| label: explore-nysdol-population
+#| output: true
+
+df <- readRDS(fs::path(DWORK, "cenpop_nysdol.rds"))
+cocodes <- count(df, fips, cocode, area)
+
+# 091, 113 115
+codes <- c("083", "091", "113", "115")
+
+df |>
+  filter(cocode %in% codes) |>
+  ggplot(aes(year, pop)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ cocode + area, scales = "free_y")
+
+baseyear <- 2010
+df |>
+  filter(cocode %in% codes, year >= baseyear) |>
+  mutate(ipop = pop / pop[year == baseyear] - 1, .by = cocode) |>
+  ggplot(aes(year, ipop, colour = area)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(
+    breaks = seq(-.2, .2, .02),
+    labels = scales::label_percent()
+  ) +
+  ggtitle("% change in population since 2010, selected area counties")
+
+df |>
+  filter(cocode == "115") |>
+  arrange(year) |>
+  tail() |>
+  gt() |>
+  tab_header("Final few records from the data file")
+```
+
+## Census Bureau Population Estimates Program -- data obtained directly from Census
+
+### Postcensal estimates
+
+#### download postcensal estimates
+
+The latest file (website date 3/13/2025, downloaded 5/6/2025) with county totals is
+`co-est2024-alldata.csv`. It has:
+
+-   postcensal 2020-2024
+-   states and counties
+-   totals and components of change
+
+downloadable from the [Census postcensal folder](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/).
+This folder may change when a year is added.
+
+```{r}
+#| label: download-postcensal-estimates
+#| eval: false
+
+# 2020-plus ----
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
+# co-est2024-alldata.csv postcensal 2020-2024 states and counties totals and components of change
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-alldata.csv
+# cc-est2023-alldata.csv cc- not co-... postcensal needs docs 2020-2023?, year, county, age group, sex, race/h; presumably 2024 will be available
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/cc-est2023-syasex-36.csv
+# cc-est2023-syasex-36.csv cc- not co- ... NY county 2020-2023?, year, county, single-year age,
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv
+# sub-est2023.csv postcensal 2020-2023 states, counties, cities, towns, villages totals (not coc)
+
+# cities, villages, and towns
+# https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/
+
+```
+
+#### read-clean-save-postcensal
+
+```{r}
+#| label: read-clean-save-postcensal
+#| eval: false
+
+# start with most recent, work backward
+# fname <- "co-est2020.csv"
+# fname <- "co-est2020-alldata.csv"
+fname <- "co-est2024-alldata.csv"
+fpath <- fs::path(DRAW, "census", "2020-plus", fname)
+
+df <- vroom::vroom(fpath)
+problems(df) # Alaska Chugach Census Area and Copper River Census Area Census 2010 pop is missing
+glimpse(df)
+
+df2 <- df |>
+  rename_with(tolower) |>
+  pivot_longer(-c(sumlev:ctyname)) |>
+  mutate(
+    year = str_sub(name, -4),
+    variable = str_sub(name, 1, -5)
+  ) |>
+  select(-name)
+
+glimpse(df2)
+count(df2, year)
+count(df2, variable)
+# tmp <- count(df2, name)
+
+df3 <- df2 |>
+  mutate(
+    year = as.integer(year),
+    rectype = ifelse(sumlev == "040", "state", "county"),
+    ctyname = str_remove(ctyname, " County")
+  ) |>
+  select(
+    year,
+    rectype,
+    stfips = state,
+    cofips = county,
+    stname,
+    coname = ctyname,
+    variable,
+    value
+  )
+
+saveRDS(df3, fs::path(DWORK, "cenpop_postcensal.rds"))
+
+```
+
+#### Explore postcensal data
+
+```{r}
+#| label: explore-postcensal
+#| output: true
+
+df <- readRDS(fs::path(DWORK, "cenpop_postcensal.rds"))
+# glimpse(df)
+# count(df, coname)
+
+df |>
+  filter(
+    rectype == "county",
+    stfips == "36",
+    cofips == "115",
+    variable == "popestimate"
+  ) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(breaks = seq(50e3, 70e3, 100)) +
+  ggtitle("Washington County, NY postcensal population")
+
+```
+
+### Intercensal estimates -- only use if NYSDOL data are not appropriate (?)
+
+#### download-intercensal-estimates
+
+```{r}
+#| label: download-intercensal-estimates
+#| eval: false
+
+# https://www2.census.gov/programs-surveys/popest/datasets/1970-1980/
+# ...
+# https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/
+
+# https://www2.census.gov/programs-surveys/popest/datasets/1970-1980/national/asrh/e7079co.zip
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/1970-1980/national/asrh/e7079co.zip"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/1980-1990/counties/totals/comp8090.zip"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-alldata-4-25-13.pdf
+# https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-sexracehisp.csv
+# https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-agesex-5yr.csv
+
+# 2000-2010 ----
+# intercensal population totals
+# https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-tot.csv
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-tot.csv"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# intercensal age-group breakdowns that appear to foot to population totals KEY FILE
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-agesex-5yr.csv"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# intercensal agegroup-sex-race-hispanic (asrh) that appear to foot to population totals
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/co-est00int-sexracehisp.csv"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "levels_components")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# 2010-2020 ----
+# intercensal population totals
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# intercensal population totals AND components of change, state and county -- IMPORTANT FILE
+url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv"
+fname <- fs::path_file(url)
+dir <- fs::path(DCENPOP, "totals")
+download.file(url, fs::path(dir, fname), mode = "wb")
+
+# intercensal pop totals county, city town -- IMPORTANT
+# https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/intercensal/cities/
+# sub-est2020int.csv intercensal state county city town village (no coc)
+
+```
+
+#### Read, clean, and save intercensal data
+
+```{r}
+#| label: read-clean-save-intercensal
+#| eval: false
+
+# start with most recent, work backward
+# fname <- "co-est2020.csv"
+fname <- "co-est2020-alldata.csv"
+fpath <- fs::path(DRAW, "census", "2010-2020", fname)
+
+df <- vroom::vroom(fpath)
+problems(df) # Alaska Chugach Census Area and Copper River Census Area Census 2010 pop is missing
+
+glimpse(df)
+ns(df)
+
+df2 <- df |>
+  rename_with(tolower) |>
+  pivot_longer(-c(sumlev:ctyname)) |>
+  mutate(
+    rectype = ifelse(sumlev == "040", "state", "county"),
+    name = str_replace(name, "pop$", ""), # replace "pop" if it appears at the end ($)
+    year = str_sub(name, -4),
+    variable = str_sub(name, 1, -5),
+    variable = str_replace(variable, "_$", ""),
+    variable = ifelse(variable == "census", "decennial", variable)
+  ) |>
+  select(-name)
+count(df2, rectype)
+count(df2, year)
+count(df2, variable)
+
+glimpse(df2)
+count(df2, year)
+count(df2, variable)
+# tmp <- count(df2, name)
+
+df3 <- df2 |>
+  mutate(
+    year = as.integer(year),
+    ctyname = str_remove(ctyname, " County")
+  ) |>
+  select(
+    year,
+    rectype,
+    stfips = state,
+    cofips = county,
+    stname,
+    coname = ctyname,
+    variable,
+    value
+  )
+
+saveRDS(df3, fs::path(DWORK, "cenpop_2010to2020.rds"))
+
+```
+
+### Combine intercensal and postcensal overlap
+
+
+## Compare Census Bureau totals with NYSDOL totals
+
+```{r}
+#| label: combine-census-nysdol
+#| eval: false
+
+df1 <- readRDS(fs::path(DWORK, "cenpop_nysdol.rds"))
+df2 <- readRDS(fs::path(DWORK, "cenpop_postcensal.rds"))
+
+glimpse(df1)
+names(df1) # "year"    "fips"    "cocode"  "area"    "program" "pop"; fips includes st and county; area includes NYS and county
+glimpse(df2)
+names(df2) # "year"     "rectype"  "stfips"   "cofips"   "stname"   "coname"   "variable" "value"
+count(df1, program)
+#  program         n
+# 1 censusbase    378
+# 2 intercensal  3150
+# 3 postcensal    252
+count(df2, rectype)
+#   rectype      n
+# 1 county  238944
+# 2 state     3876
+count(df2, variable)
+
+# make compatible
+df1a <- df1 |>
+  rename(cofips = cocode) |>
+  mutate(
+    stfips = str_sub(fips, 1, 2),
+    rectype = ifelse(cofips == "000", "state", "county"),
+    src = "nysdol"
+  ) |>
+  select(src, rectype, stfips, cofips, area, program, year, value = pop)
+
+df2a <- df2 |>
+  filter(variable == "popestimate") |>
+  mutate(src = "census", program = "postcensal") |>
+  select(src, rectype, stfips, cofips, area = coname, program, year, value)
+tmp <- df2a |> filter(stfips == "36")
+
+stack <- bind_rows(df1a, df2a |> filter(stfips == "36"))
+tmp <- stack |> filter(rectype == "state")
+
+stack |>
+  filter(rectype == "state", program == "postcensal") |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+# Wow - huge NYS shift in 2023, smaller shift in 2022
+
+albco <- "001"
+washco <- "115"
+cnty <- albco
+stack |>
+  filter(rectype == "county", program == "postcensal", cofips == cnty) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+# Wow - almost no shift for Wash Co; big shift for Albany
+
+stack |>
+  filter(
+    rectype == "county",
+    program %in% c("intercensal", "postcensal"),
+    cofips == cnty
+  ) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
+```
+
+## Save stacked file as control
+
+```{r}
+#| label: save-census-nysdol
+#| eval: false
+
+glimpse(stack)
+stack2 <- stack |>
+  filter(program %in% c("intercensal", "postcensal")) |>
+  filter(src == "nysdol" & year < 2020 | src == "census" & year >= 2020)
+
+albco <- "001"
+washco <- "115"
+cnty <- albco
+cnty <- washco
+
+
+stack2 |>
+  filter(rectype == "county", cofips == cnty) |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "county", cofips == cnty) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "state") |>
+  ggplot(aes(year, value, colour = src)) +
+  geom_line() +
+  geom_point()
+
+stack2 |>
+  filter(rectype == "state") |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point()
+
+saveRDS(stack2, fs::path(DDATA, "pop_control.rds"))
+
+```
+
+## Explore file
+
+```{r}
+#| label: explore-census-nysdol
+#| eval: false
+
+df <- readRDS(fs::path(DDATA, "pop_control.rds"))
+
+# 091, 113 115
+codes <- c("083", "091", "113", "115")
+
+df |>
+  filter(cofips %in% codes) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ cofips + area, scales = "free_y")
+
+baseyear <- 2010
+df |>
+  filter(cofips %in% codes, year >= baseyear) |>
+  mutate(ipop = value / value[year == baseyear] - 1, .by = cofips) |>
+  ggplot(aes(year, ipop, colour = area)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(
+    breaks = seq(-.2, .2, .02),
+    labels = scales::label_percent()
+  )
+
+```
+
+
+## Stop here
+
+```{r}
+#| label: stop_here
+
+knitr::knit_exit()
+```
+

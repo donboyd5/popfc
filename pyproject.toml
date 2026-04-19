@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "popfc"
+version = "0.1.0"
+description = "Population forecasts for Washington County, NY and its constituent towns"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Don Boyd" }]
+license = { text = "MIT" }
+# Runtime dependencies listed loosely here so `pip install -e .` works in any
+# environment. Exact pins for reproducibility live in requirements.txt.
+dependencies = [
+    "pandas",
+    "numpy",
+    "pyarrow",
+    "scipy",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "requests",
+    "openpyxl",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "nbstripout",
+]
+viz = [
+    "plotly",
+]
+notebooks = [
+    "jupyterlab",
+    "ipykernel",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

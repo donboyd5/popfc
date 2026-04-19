@@ -1,0 +1,304 @@
+---
+editor_options: 
+  chunk_output_type: console
+editor:
+  markdown:
+    canonical: true  
+---
+
+# Get County Components of Change
+
+CAUTION: The Census Bureau produces postcensal components of change (births, deaths, net migration) where initial year + components foot to subsequent year. After a new decennial census, they construct intercensal estimates that smooth the path for TOTAL population from one decennial census to the next. However, they do not prepare revised components of change that fit with these smoothed estimates. Thus, we do not have data that provide internally consistent components of change that walk from one decennial census to the next.
+
+## Definitions
+
+See: The Components of Demographic Change: When Does Each Matter Most?, Saswathi Natta and Daniel Goodkind, Released May 2024 (In folder)
+
+- Crude birth rate (CBR) is defined as the number of births during a year per 1,000 population **at midyear**.
+- Crude death rate (CDR) is defined as the number of deaths during a year per 1,000 population **at midyear**.
+
+
+
+
+## Links to Census Components of Change
+
+https://www2.census.gov/programs-surveys/popest/datasets/
+https://www.census.gov/programs-surveys/popest.html
+https://www.census.gov/programs-surveys/popest/data/data-sets.html
+https://www.census.gov/programs-surveys/international-programs/events/training/select-topics-in-international-population-health/demographic-change.html
+https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html
+https://www2.census.gov/programs-surveys/popest/tables/2020-2024/counties/totals/co-est2024-comp.xlsx
+https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
+
+
+### Files to use
+
+-   [co-est2010-alldata.csv -- county-year 2000-2010 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv) -- note that the Census folder is called "2010-eval-estimates" so perhaps these were not officially released
+-   [co-est2020-alldata.csv -- county-year 2010-2020 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv)
+-   [co-est2024-alldata.csv -- county-year 2020-2024 components of change](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv)
+
+The rate variables must be per thousand I think.
+
+```{r}
+#| label: setup
+
+source(here::here("setup.R"))
+```
+
+
+## Download Census files (if needed)
+
+```{r}
+#| label: download
+#| eval: false
+
+# co-est2010-alldata.csv co-est2020-alldata.csv co-est2024-alldata.csv
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010/2010-eval-estimates/co-est2010-alldata.csv"
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020-alldata.csv"
+# url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv"
+
+# fname <- fs::path_file(url)
+# download.file(url, fs::path(DCOC, fname), mode = "wb")
+
+```
+
+
+## Get data, combine, and save (1st step, raw data)
+
+```{r}
+#| label: get-all
+
+f <- function(fpath) {
+  df <- vroom(fpath, col_types = cols(.default = col_character()))
+
+  dflong <- df |>
+    rename_with(tolower) |>
+    select(-region, -division) |>
+    rename(stfips = state, cntyfips = county, cntyname = ctyname) |>
+    mutate(
+      geotype = case_when(
+        sumlev == "040" ~ "state",
+        sumlev == "050" ~ "county",
+        .default = "ERROR"
+      ),
+      shortname = str_remove(cntyname, " County")
+    ) |>
+    pivot_longer(
+      -c(sumlev, geotype, stfips, stname, cntyfips, cntyname, shortname)
+    )
+
+  dflong2 <- dflong |>
+    mutate(
+      variable = case_when(
+        stringr::str_starts(name, "census") ~ "censuspop",
+        .default = stringr::str_sub(name, end = -5)
+      ),
+      year = case_when(
+        stringr::str_starts(name, "census") ~ stringr::str_sub(name, 7, 10),
+        .default = stringr::str_sub(name, start = -4)
+      ),
+      variable = str_remove(variable, "_"),
+      year = as.integer(year),
+      value = as.numeric(value),
+      file = fs::path_file(fpath)
+    )
+}
+
+fnames <- c(
+  "co-est2010-alldata.csv",
+  "co-est2020-alldata.csv",
+  "co-est2024-alldata.csv"
+)
+fpaths <- fs::path(DCOC, fnames)
+
+df <- purrr::map(fpaths, f) |> list_rbind()
+summary(df)
+saveRDS(df, fs::path(DWORK, "coc_raw.rds"))
+
+check <- f(fpaths[3])
+check2 <- check |>
+  filter(stfips == "36", cntyfips == "001", variable == "births")
+check3 <- read_csv(fpaths[3]) |> filter(STATE == "36", COUNTY == "001")
+check4 <- read_csv(fpaths[3]) |> filter(STATE == "36", COUNTY == "000")
+
+```
+
+## Clean data and save cleaned data
+
+```{r}
+#| label: coc-clean
+
+cocraw <- readRDS(fs::path(DWORK, "coc_raw.rds"))
+
+count(cocraw, variable)
+check <- cocraw |>
+  filter(
+    stfips == "36",
+    geotype == "county",
+    shortname == "Hamilton",
+    year == 2010
+  )
+
+
+# first, make names uniform as they vary slightly over years; this will make it easier to keep latest version of any duplicate records for a variable
+
+# drop censuspop and estimatesbase so that we have July 1 estimates for all
+coc2 <- cocraw |>
+  filter(!variable %in% c("censuspop", "estimatesbase", "gqestimatesbase")) |>
+  mutate(
+    variable = ifelse(variable == "rbirth", "rbirths", variable), # for consistency between rate and value
+    variable = ifelse(variable == "rdeath", "rdeaths", variable),
+    variable = str_replace(variable, "domesticmig", "dmig"),
+    variable = str_replace(variable, "internationalmig", "imig"),
+    variable = str_replace(variable, "gqestimates", "gqest"),
+    variable = str_replace(variable, "naturalinc", "naturalchg"), # this is important for removing duplicates!
+    variable = str_replace(variable, "natural", "nat"),
+    variable = str_replace(variable, "popestimate", "pop"),
+    variable = str_replace(variable, "residual", "resid")
+  )
+count(coc2, variable)
+summary(coc2)
+
+# when we have two values for the same variable-year combo, take the one from the later file
+# this can happen, for example, when we have data for the 2010 cenus year in both the file ending 2010 and the file ending 2020
+coc3 <- coc2 |>
+  arrange(stfips, cntyfips, variable, year, file) |>
+  group_by(stfips, cntyfips, variable, year) |>
+  filter(row_number() == n()) |> # Takes the last row in each group
+  ungroup()
+
+# check for duplicates - they should be gone!
+tmp <- coc3 |>
+  summarise(
+    n = n(),
+    .by = c(stfips, cntyfips, stname, shortname, geotype, variable, value, year)
+  )
+count(tmp, n) # good, all gone
+
+# create variable type and make longer file
+coc4 <- coc3 |>
+  mutate(
+    vtype = case_when(
+      str_sub(variable, 1, 1) == "r" & variable != "resid" ~ "rate",
+      .default = "value"
+    )
+  )
+
+count(coc4, vtype, variable)
+
+coc5 <- coc4 |>
+  select(
+    geotype,
+    stfips,
+    cntyfips,
+    stname,
+    shortname,
+    year,
+    vtype,
+    variable,
+    value
+  )
+
+# |>
+# mutate(
+#   variable = ifelse(
+#     str_sub(variable, 1, 1) == "r" & variable != "resid",
+#     str_sub(variable, 2, -1),
+#     variable
+#   )
+# count(coc5, vtype, variable) |> pivot_wider(names_from = vtype, values_from = n)
+
+coc6 <- coc5 |>
+  select(-vtype) |>
+  pivot_wider(names_from = variable) |>
+  arrange(geotype, stfips, cntyfips, year) |>
+  mutate(poplag = lag(pop), .by = c(geotype, stfips, cntyfips)) |>
+  relocate(pop, poplag, .after = year)
+
+```
+
+## Adjust births, deaths, and resid
+
+```{r}
+#| label: adjust-births-deaths-resid
+
+# calculate improved births and deaths for decennial census years
+coc7 <- coc6 |>
+  mutate(
+    avgpop = (pop + poplag) / 2,
+    abirths = avgpop * rbirths / 1000,
+    adeaths = avgpop * rdeaths / 1000,
+    anatchg = abirths - adeaths,
+    aresid = npopchg - anatchg - netmig,
+  ) |>
+  relocate(avgpop, .after = poplag) |>
+  relocate(abirths, .after = births) |>
+  relocate(adeaths, .after = deaths) |>
+  relocate(aresid, .after = resid)
+
+```
+
+## Save final components of change file
+
+```{r}
+saveRDS(coc7, fs::path(DWORK, "cocwide.rds"))
+```
+
+## Explore
+
+```{r}
+#| label: check-adjustments
+
+cnty <- "Albany" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+df <- coc7 |>
+  filter(stfips == "36", shortname == cnty) |>
+  select(
+    stfips,
+    cntyfips,
+    shortname,
+    year,
+    births,
+    abirths,
+    deaths,
+    adeaths,
+    resid,
+    aresid
+  ) |>
+  pivot_longer(-c(stfips, cntyfips, shortname, year))
+
+cvar <- "resid" # deaths births resid
+df |>
+  filter(str_detect(name, cvar)) |>
+  ggplot(aes(year, value, colour = name)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = 0) + # use for resid
+  ggtitle(paste(cnty, cvar))
+
+```
+
+
+```{r}
+
+tmp <- cocraw |>
+  filter(stfips == "01", cntyfips == "001", year %in% c(2000, 2009, 2010)) |>
+  filter(variable %in% c("popestimate", "censuspop", "estimatesbase"))
+tmp
+
+coc <- readRDS(fs::path(DWORK, "cocwide.rds"))
+glimpse(coc)
+
+
+cvar <- "deaths" # deaths netmig resid dmig imig pop
+# rural counties ~ 1 hr from a city
+cnty <- "Washington" # Cayuga Columbia Genesee Greene Livingston Madison Montgomery Ontario Oswego Rensselaer Saratoga Schoharie Warren Washington Wyoming
+coc |>
+  filter(stfips == "36", shortname == cnty) |>
+  select(year, value = all_of(cvar)) |>
+  ggplot(aes(year, value)) +
+  geom_point() +
+  geom_line() +
+  # geom_hline(yintercept = 0) +
+  ggtitle(paste(cnty, cvar))
+
+```

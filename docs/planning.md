@@ -50,7 +50,35 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 
 ---
 
-## Current Status (as of 2026-05-22)
+## Current Status (as of 2026-05-22, Phase 2 started)
+
+### Phase 1 — COMPLETE
+
+Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data source on disk (Census PEP 3 vintages, Census SYA, CDC Bridged-Race, NYSDOL, NYSDOH, Cornell PAD), the `popfc.reconcile` module, Notebooks 01–03, and interim parquet outputs `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. 26 tests passed at merge time.
+
+Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
+
+### Phase 2 — IN PROGRESS
+
+Branch `feat/phase-2-external-data`. Latest commit covers:
+
+- **ACS 5-year API loader** (`src/popfc/data/acs.py`) — generic group-fetcher (`load_acs5_group()`) plus a metadata helper (`get_acs_variables()`). Reads the API key from the `CENSUS_API_KEY` env var; the variables endpoint is anonymous-accessible, so metadata works without a key. Disk cache under `data_raw/acs/<year>/` for every response — re-runs do not hit the network.
+- **Pinned to ACS 2020–2024** (`LATEST_ACS5_YEAR = 2024`, latest published 5-year release). One-line bump when Census ships the next vintage.
+- **First three tables pulled** statewide (62 NY counties + 1,023 MCDs):
+  - **B01001** sex by age — 49 variables
+  - **B07001** geographic mobility by age — 96 variables
+  - **B06001** place of birth by age — 60 variables
+  - Sanity-checked: sum of Washington MCD totals exactly equals Washington county total (60,522).
+- **39 tests passing** (added 13 for ACS — URL builder, error detection, key resolution, cached-response parsing).
+
+#### Phase 2 still-to-do
+
+1. **NCHS / SSA life tables** — drop static life-table files into `data_raw/nchs/` and write a loader emitting age/sex survival rates → `data_interim/life_tables.parquet`.
+2. **NCHS USALEEP small-area life expectancy** — `NY_B.XLSX` (Washington tract-level), useful for sub-county detail in Phase 4.
+3. **Notebook 04 — external-data audit / quick-look** — sanity-check ACS county totals vs reconciled PEP, and surface the few ACS variables we'll actually use downstream (counts by age bin, mobility flows, foreign-born share by age).
+4. (Optional) **Formalize `src/popfc/data/download.py`** — generalize the ACS caching pattern as the deferred data-refresh pipeline anticipated in MEMORY.md.
+
+
 
 ### Phase 0 — COMPLETE
 
@@ -63,49 +91,6 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 - R project reference materials (`.qmd`, `setup.R`, `_quarto.yml`, `images/`, `CLAUDE.md`) preserved to `docs/r_reference/`
 - Smoke tests: **4 passed**
 - Git: feature branch `feat/phase-1-data-reconciliation` on primary tree; worktree `.worktree-docs/` pinned to long-lived `docs/main` branch (docs commits land there and are merged into `main` via normal branch flow, so `main` never receives direct commits); repo at https://github.com/donboyd5/popfc
-
-### Phase 1 — IN PROGRESS
-
-**Loaders built** (`src/popfc/data/`):
-
-- `_common.py` — canonical long-format schemas (`POP_LONG_COLUMNS`, `COMPONENTS_LONG_COLUMNS`), FIPS helpers, and **string-first ingestion helpers** (`read_csv_strings`, `coerce_numeric`). All raw CSVs are read with `dtype=str` and explicitly coerced at the melt step so data anomalies surface as warnings instead of being silently masked by pandas' auto-inference.
-- `census.py` — three PEP vintage loaders (2000–2010 intercensal, 2010–2020 intercensal, 2020+ postcensal) plus `load_all_pep()` stack. Emits both population totals and components of change, including the RATE columns (`RBIRTH`, `RDEATH`, etc., per-1000 mid-year average population) used in the R project's "adjusted births/deaths" formula for decennial seams.
-- `nysdol.py` — NYSDOL annual estimates 1970–2023, program-type labels mapped to canonical `kind` values (`estimate` / `intercensal` / `census`).
-
-All loaders accept `path` and `vintage` parameters so swapping in a newer file is a one-line change (see "Deferred: data refresh pipeline" in MEMORY.md).
-
-**Notebook 01 — `notebooks/01_population_reconciliation.ipynb`** complete and executing cleanly end-to-end. Produces:
-
-- `data_interim/population_all_sources.parquet` — 5,796 rows (stacked raw PEP + NYSDOL for QA)
-- `data_interim/population_reconciled.parquet` — **1,575 rows** (63 entities × 25 years 2000–2024, one authoritative value per `(geoid, year)`)
-
-Companion generator `notebooks/_build_01_reconciliation.py` produces the notebook from Python source so cells can be regenerated deterministically.
-
-#### Reconciliation rules applied (Phase 1)
-
-1. **Decennial anchors** (2000, 2010, 2020) — NYSDOL "Census Base Population" (`kind='census'`). Single curated series covers all three decennials consistently; Census PEP's `CENSUS2010POP` agrees for 2010, and Census encodes the April-1 2020 count as `ESTIMATESBASE2020` which we preserve in the raw stack rather than re-labeling.
-2. **Postcensal years** (2021+) — Census PEP postcensal estimate from the latest vintage (`v2024`).
-3. **Intercensal years** (2001–2019 non-decennial) — NYSDOL intercensal estimate. Rationale: NYSDOL's annual series extends back to 1970 with consistent methodology and was treated as authoritative by the legacy R workflow.
-4. **Vintage overlap resolution** — when two PEP files cover the same `(geoid, year, kind)`, keep the later vintage (v2024 > v2020 > v2010int).
-
-#### Key data-quality finding (carried forward from R)
-
-**Components of change do NOT reconcile across the decennial seam.** Census intercensal estimates smooth the *totals* to hit the decennial count, but the published component series (births, deaths, migration) sums to the *postcensal* total — not the intercensal total. The rate columns (RBIRTH, RDEATH, etc.) combined with mid-year average population can be used to compute "adjusted" counts near the seam; this is documented in `docs/r_reference/get-components-of-change.qmd` and will be revisited in Notebook 02.
-
-#### Phase 1 still-to-do
-
-Active chunk (in progress on `feat/phase-1-data-reconciliation`):
-
-1. **CDC Bridged-Race loader** (`src/popfc/data/cdc.py`) — Washington-only WONDER export, 1990–2020 single-year-of-age by sex. Unblocks Phase 3 cohort base year as well as the age/sex audit.
-2. **NYSDOH loader** (`src/popfc/data/nysdoh.py`) — population by age/sex/race/county 2003+ from the existing file; flag births/deaths API pulls as a follow-on issue.
-3. **Notebook 02 — components audit** (`notebooks/02_components_audit.ipynb` + companion `_build_02_components_audit.py`): cross-check Census PEP vs NYSDOH births/deaths; verify the demographic identity Pop(t) = Pop(t-1) + B − D + NetMig per county; write `data_interim/county_components.parquet`.
-4. **Promote reconciliation logic** from Notebook 01 into `src/popfc/reconcile.py` with a unit test.
-
-After this chunk:
-
-- Notebook 03 — age/sex audit (CDC Bridged-Race 1990–2020 vs Census SYA 2020–2023; continuity across 2020 seam).
-- Cornell PAD loader (forecast benchmark; small, can ride with Notebook 03 or later).
-- Decision: extend the reconciled series back to 1970 using NYSDOL?
 
 ### Data already present in `data_raw/`
 
@@ -318,7 +303,8 @@ Copy-paste into a new session to continue:
 >
 > Key reminders:
 > - Phase 0 (env + scaffolding) is complete; smoke tests pass.
-> - Phase 1 is partially complete: loaders for Census PEP (3 vintages) and NYSDOL are in `src/popfc/data/`; notebook `01_population_reconciliation.ipynb` produces `data_interim/population_reconciled.parquet` (1,575 rows, 2000–2024, no gaps). See planning.md for reconciliation rules.
+> - Phase 1 (data audit & reconciliation) is COMPLETE and merged to main at `408aaa4`. Loaders for every raw data source are in `src/popfc/data/`; notebooks 01–03 produce `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. See planning.md for reconciliation rules.
+> - Phase 2 (external data) is IN PROGRESS on `feat/phase-2-external-data`. ACS 5-year loader (`src/popfc/data/acs.py`) and the first three tables (B01001/B07001/B06001) at county and MCD level are pulled and cached. Census API key required for live pulls (`CENSUS_API_KEY` env var); cached responses serve offline.
 > - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Coercion failures warn (don't silently mask). Apply this pattern to every new loader.
 > - R project at `popfc_R/` is reference only; its docs are preserved at `docs/r_reference/`. It will eventually be deleted — **do not feel constrained by the R implementation; always apply Python best practices.**
 > - Scope: cohort-component engine is county-agnostic (FIPS param). Primary output for Washington County + towns; validation-cohort output for 5 neighbor counties; sanity-sweep totals across all 62.

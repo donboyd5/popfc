@@ -336,16 +336,68 @@ print(f"wrote {reconciled_path}  ({len(reconciled):,} rows)")
 """),
     # ---------------------------------------------------------------
     md("""
+## 9. Benchmark overlay — Cornell PAD projection (Washington)
+
+The reconciled Census/NYSDOL series is the *history*. Cornell PAD's
+`padprojections115.xls` is the *projection benchmark* this project's
+forecast will eventually be compared against. Show them on the same
+chart so we can see (a) how PAD lined up with subsequent observed
+history, and (b) where PAD projects Washington's population over the
+2025–2040 horizon.
+"""),
+    code("""
+from popfc.data.cornell import load_cornell_pad
+
+pad = load_cornell_pad()
+pad_totals = pad["totals"]
+
+wash_recon = reconciled[reconciled["geoid"] == WASHINGTON].sort_values("year")
+wash_pad = pad_totals[pad_totals["geoid"] == WASHINGTON].sort_values("year")
+
+fig, ax = plt.subplots(figsize=(11, 5))
+ax.plot(wash_recon["year"], wash_recon["population"],
+        marker="o", markersize=3, linewidth=1.4,
+        label="Reconciled (Census/NYSDOL)")
+ax.plot(wash_pad["year"], wash_pad["population"],
+        marker="s", markersize=3, linewidth=1.2, linestyle="--",
+        label=f"Cornell PAD ({wash_pad['vintage'].iloc[0]})")
+ax.axvline(2024.5, color="grey", linewidth=0.8, alpha=0.5)
+ax.text(2024.7, ax.get_ylim()[1], "→ projection horizon",
+        va="top", ha="left", fontsize=9, color="grey")
+ax.set_title("Washington County (36115): history vs Cornell PAD projection")
+ax.set_xlabel("year")
+ax.set_ylabel("population")
+ax.grid(True, alpha=0.3)
+ax.legend()
+fig.tight_layout()
+plt.show()
+
+# Side-by-side table for the overlap window 2015–2024.
+overlap = pd.merge(
+    wash_recon[["year", "population"]].rename(columns={"population": "reconciled"}),
+    wash_pad[["year", "population"]].rename(columns={"population": "cornell_pad"}),
+    on="year", how="inner",
+)
+overlap["pad_minus_recon"] = (
+    overlap["cornell_pad"].astype("Int64") - overlap["reconciled"].astype("Int64")
+)
+overlap["pct_diff"] = 100.0 * overlap["pad_minus_recon"].astype("Float64") / overlap["reconciled"].astype("Float64")
+print("PAD vs reconciled, overlap years (Washington):")
+print(overlap.to_string(index=False, float_format=lambda x: f'{x:,.2f}'))
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## Next steps (Phase 1 continued)
 
-- **Add CDC Bridged-Race loader** for 2010–2020 (age/sex detail; needed for
-  cohort-component base year).
-- **Add NYSDOH vital statistics loader** (independent births/deaths for
-  cross-check against Census rates).
+- **CDC Bridged-Race loader** — done (`src/popfc/data/cdc.py`).
+- **NYSDOH population loader** — done (`src/popfc/data/nysdoh.py`).
+- **NYSDOH vital statistics (births/deaths)** — deferred to a follow-on
+  API pull (see GitHub issue).
+- **Notebook 03 — age/sex audit** (CDC Bridged-Race 1990–2020 vs Census
+  SYA 2020–2023, continuity across the 2020 seam).
 - **Investigate the decennial seam residual** per county — how big is the
   implied mismatch between intercensal smoothing and component sums?
-- **Promote the reconciliation logic** from this notebook into
-  `src/popfc/reconcile.py` once the rules stabilize.
+- **Reconciliation logic** promoted to `src/popfc/reconcile.py` — done.
 """),
 ]
 

@@ -22,8 +22,9 @@ data_final/
 # Its prose/docs/R code are preserved in docs/r_reference/.
 popfc_R/
 
-# Git worktree for main branch (docs editing from any feature branch).
-.worktree-main/
+# Git worktree for the docs/main branch (docs editing from any feature
+# branch; docs changes merge to main via PR/merge like code does).
+.worktree-docs/
 
 # OS / editor
 .DS_Store

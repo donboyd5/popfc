@@ -58,7 +58,33 @@ Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data 
 
 Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
 
-### Phase 2 — COMPLETE on `feat/phase-2-external-data` (not yet merged)
+### Phase 3 — COMPLETE on `feat/phase-3-cohort-component` (not yet merged)
+
+Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing.
+
+**Modules** (`src/popfc/models/`):
+
+- `mortality.py` — `survival_rates_from_life_table()` with optional `top_code_age` rebanding for matching population data. Closed-band Sx = L(x+1)/L(x); boundary uses Preston's combined formula L(ω)/[L(ω-1) + L(ω)] applied to (P(ω-1) + P(ω)).
+- `fertility.py` — NCHS 2023 reference schedule (TFR = 1.621) + `build_county_year_asfr()` that scales the schedule to match observed total births county-by-county.
+- `migration.py` — `build_net_migration_rates()` via the residual method on Census SYA year-pairs. Rates per source-age person, so the engine adds them to survival.
+- `cohort_component.py` — `project_one_county()`, the main engine. Single-year by single-year-of-age × sex, with scalar `asfr_multiplier` and `net_mig_multiplier` scenario knobs.
+
+**Notebooks 05-08:**
+
+- 05 — fertility prep → `data_interim/asfr.parquet` (10,280 rows; 62 counties × 4 years + Washington × 9 historical years)
+- 06 — mortality prep → `data_interim/survival_rates.parquet` (606 rows; US 2023 + NY 2022 × 3 sexes × 101 ages)
+- 07 — migration prep → `data_interim/net_migration_rates.parquet` (10,540 rows)
+- 08 — county forecast → `data_interim/county_forecasts.parquet` (86,688 rows; 6 counties × 3 scenarios × 28 years × 2 sexes × 86 ages)
+
+**Headline projection** (baseline scenario, Washington County): 60,047 in 2023 → 51,600 in 2040 → **45,342 in 2050** (~24.5% decline). More pessimistic than Cornell PAD's pre-pandemic 2040 projection (59,196) because our migration inputs reflect 2020-2023 (pandemic-era out-migration accelerated).
+
+#### Phase 3 follow-ons (not blocking; deferred to Phase 4 / future)
+
+- Replace national ASFR pattern with NYSDOH births-by-mother's-age (issue #2 unblocked).
+- Smooth migration with a Rogers-Castro model schedule for stability over long horizons.
+- USALEEP-based Washington-specific mortality (currently using state rates).
+
+### Phase 2 — COMPLETE on `feat/phase-2-external-data` (merged to main `e0ff419`)
 
 All external-data loaders, the audit notebook, and the refresh pipeline shipped on commits `0540743` (ACS) and `af5ace7` (NCHS + Notebook 04 + download.py).
 
@@ -328,6 +354,7 @@ Copy-paste into a new session to continue:
 ## Critical files / references
 
 - `CLAUDE.md` (project root) — durable project rules (git workflow, data conventions, code conventions)
+- `docs/workflow.md` — operating manual: how to run the pipeline end-to-end
 - [docs/r_reference/README.md](r_reference/README.md) — index of preserved R materials
 - [docs/r_reference/methodology.qmd](r_reference/methodology.qmd) — Cornell PAD methodology (prose)
 - [docs/r_reference/steps.qmd](r_reference/steps.qmd) — high-level forecasting workflow

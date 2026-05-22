@@ -50,6 +50,7 @@ Durable rules for anyone (human or AI) working in this repo. These are not prefe
 
 ## Pointers
 
+- How to actually run the forecast end-to-end: `docs/workflow.md`
 - Full plan, status, and phase breakdown: `docs/planning.md`
 - R-project reference materials (preserved): `docs/r_reference/`
 - Claude auto-memory (Claude's working notes, machine-local): `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md`

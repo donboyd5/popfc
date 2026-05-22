@@ -58,25 +58,36 @@ Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data 
 
 Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
 
-### Phase 2 — IN PROGRESS
+### Phase 2 — COMPLETE on `feat/phase-2-external-data` (not yet merged)
 
-Branch `feat/phase-2-external-data`. Latest commit covers:
+All external-data loaders, the audit notebook, and the refresh pipeline shipped on commits `0540743` (ACS) and `af5ace7` (NCHS + Notebook 04 + download.py).
 
-- **ACS 5-year API loader** (`src/popfc/data/acs.py`) — generic group-fetcher (`load_acs5_group()`) plus a metadata helper (`get_acs_variables()`). Reads the API key from the `CENSUS_API_KEY` env var; the variables endpoint is anonymous-accessible, so metadata works without a key. Disk cache under `data_raw/acs/<year>/` for every response — re-runs do not hit the network.
-- **Pinned to ACS 2020–2024** (`LATEST_ACS5_YEAR = 2024`, latest published 5-year release). One-line bump when Census ships the next vintage.
-- **First three tables pulled** statewide (62 NY counties + 1,023 MCDs):
-  - **B01001** sex by age — 49 variables
-  - **B07001** geographic mobility by age — 96 variables
-  - **B06001** place of birth by age — 60 variables
-  - Sanity-checked: sum of Washington MCD totals exactly equals Washington county total (60,522).
-- **39 tests passing** (added 13 for ACS — URL builder, error detection, key resolution, cached-response parsing).
+**Loaders added** (`src/popfc/data/`):
 
-#### Phase 2 still-to-do
+- `acs.py` — generic ACS 5-year API loader. `load_acs5_group()` for any table group; `get_acs_variables()` for metadata. `LATEST_ACS5_YEAR = 2024` (ACS 2020–2024); update is one line. Reads `CENSUS_API_KEY` env var; cache under `data_raw/acs/<year>/`.
+- `nchs.py` — NCHS national life tables (2023, NVSR 74-06), NY state life tables (2022, NVSR 74-12), and USALEEP small-area life expectancy (2010–2015 period, tract-level). All emit the new `LIFE_TABLE_COLUMNS` schema.
+- `download.py` — centralized refresh registry. 15 sources registered (9 NCHS XLSX/CSV, 6 ACS group-pulls). CLI: `python -m popfc.data.download [--list | --source NAME | --force]`.
 
-1. **NCHS / SSA life tables** — drop static life-table files into `data_raw/nchs/` and write a loader emitting age/sex survival rates → `data_interim/life_tables.parquet`.
-2. **NCHS USALEEP small-area life expectancy** — `NY_B.XLSX` (Washington tract-level), useful for sub-county detail in Phase 4.
-3. **Notebook 04 — external-data audit / quick-look** — sanity-check ACS county totals vs reconciled PEP, and surface the few ACS variables we'll actually use downstream (counts by age bin, mobility flows, foreign-born share by age).
-4. (Optional) **Formalize `src/popfc/data/download.py`** — generalize the ACS caching pattern as the deferred data-refresh pipeline anticipated in MEMORY.md.
+**ACS tables pulled and cached** statewide (62 counties + 1,023 MCDs):
+
+- **B01001** sex by age (49 vars)
+- **B07001** geographic mobility by age (96 vars)
+- **B06001** place of birth by age (60 vars)
+- Sanity check: Washington MCD totals exactly equal county total (60,522).
+
+**Notebook 04 — `notebooks/04_external_data.ipynb`** — ACS-vs-PEP totals check, quick-look on age structure / foreign-born share / mover share, plus life-table audit. Writes `data_interim/life_tables.parquet` (793 rows: 303 US + 303 NY + 187 Washington tracts).
+
+**Tests: 65 passing** (was 39 + 26 for NCHS/download).
+
+#### Next: merge Phase 2 to main, then Phase 3
+
+After merge, cut `feat/phase-3-cohort-component` for the actual forecasting work:
+
+1. **Notebook 05 — fertility prep** (ASFR from Census PEP rate columns; later NYSDOH births when API pulls land — issue #2).
+2. **Notebook 06 — mortality prep** (NY state 2022 life table → survival rates `Sx = Lx(t+1) / Lx(t)`, with optional USALEEP tract-level adjustment).
+3. **Notebook 07 — migration prep** (residual method using `county_components.parquet` + ACS B07001/B06001).
+4. **`src/popfc/models/cohort_component.py`** — county-agnostic forecaster class.
+5. **Notebook 08 — county forecast** — primary Washington + 5 validation counties; project to 2050; low/medium/high scenarios; benchmark vs Cornell PAD.
 
 
 

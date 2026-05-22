@@ -224,11 +224,53 @@ def _single_table_survival(
     return out[SURVIVAL_RATES_COLUMNS]
 
 
+def _reband_to_top_code(
+    lt_sub: pd.DataFrame,
+    top_code_age: int,
+) -> pd.DataFrame:
+    """Collapse a single-year life-table slice so its open band starts at `top_code_age`.
+
+    Original open band starts at the largest age in the table (ω_orig).
+    The collapsed open band covers ages [top_code_age, ω_orig+] and has
+    L = sum of Lx for x in that range. ex at the collapsed boundary is
+    T(top_code_age) / lx(top_code_age) where T(x) = sum of Lx for x ≥ x.
+    """
+    if top_code_age <= 0:
+        raise ValueError("top_code_age must be positive")
+    omega_orig = int(lt_sub["age"].max())
+    if top_code_age > omega_orig:
+        raise ValueError(
+            f"top_code_age {top_code_age} exceeds the table's open band age {omega_orig}"
+        )
+    if top_code_age == omega_orig:
+        return lt_sub
+
+    # Closed rows are ages 0..top_code_age - 1; collapsed open is at top_code_age.
+    closed = lt_sub[lt_sub["age"] < top_code_age].copy()
+    above = lt_sub[lt_sub["age"] >= top_code_age]
+    L_open_new = float(above["Lx"].astype(float).sum())
+    # T(top_code_age) is the sum of Lx for ages ≥ top_code_age.
+    T_top = L_open_new
+    lx_top = float(above["lx"].iloc[0])
+    ex_new = T_top / lx_top if lx_top > 0 else 0.0
+
+    open_row = lt_sub.iloc[[-1]].copy()
+    open_row["age"] = top_code_age
+    open_row["age_band"] = f"{top_code_age}+"
+    open_row["Lx"] = L_open_new
+    open_row["lx"] = lx_top
+    open_row["ex"] = ex_new
+    # qx and other downstream fields aren't used by survival math; leave as is.
+
+    return pd.concat([closed, open_row], ignore_index=True)
+
+
 def survival_rates_from_life_table(
     life_table: pd.DataFrame,
     *,
     radix: float = DEFAULT_RADIX,
     min_rows_per_slice: int = 50,
+    top_code_age: int | None = None,
 ) -> pd.DataFrame:
     """Compute single-year survival rates from one or more period life tables.
 
@@ -237,6 +279,15 @@ def survival_rates_from_life_table(
     `min_rows_per_slice` rows are skipped — they're almost certainly
     abridged (5-year-banded) tables that this single-year code path
     cannot handle.
+
+    Parameters
+    ----------
+    top_code_age
+        If set, reband each slice so the open band starts at this age
+        rather than the table's natural top (typically 100). Used to
+        align the survival schedule with population data that has a
+        lower top-code (Census SYA and CDC bridged-race top-code at 85).
+        Default None preserves the original top.
     """
     required = {"geoid", "year_start", "sex", "age", "age_band", "Lx", "ex"}
     missing = required - set(life_table.columns)
@@ -251,7 +302,10 @@ def survival_rates_from_life_table(
     ):
         if len(sub) < min_rows_per_slice:
             continue
-        frames.append(_single_table_survival(sub, radix=radix))
+        sub_sorted = sub.sort_values("age").reset_index(drop=True)
+        if top_code_age is not None:
+            sub_sorted = _reband_to_top_code(sub_sorted, top_code_age)
+        frames.append(_single_table_survival(sub_sorted, radix=radix))
     if not frames:
         return pd.DataFrame(columns=SURVIVAL_RATES_COLUMNS)
     return pd.concat(frames, ignore_index=True).reset_index(drop=True)

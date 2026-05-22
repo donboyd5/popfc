@@ -23,6 +23,7 @@ NYSDOH_DIR: Path = DATA_RAW / "nysdoh"
 IRS_DIR: Path = DATA_RAW / "irs"
 CORNELL_DIR: Path = DATA_RAW / "cornell"
 ACS_DIR: Path = DATA_RAW / "acs"
+NCHS_DIR: Path = DATA_RAW / "nchs"
 
 # Notebook and output locations
 NOTEBOOKS_DIR: Path = PROJECT_ROOT / "notebooks"

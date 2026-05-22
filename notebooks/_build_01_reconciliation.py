@@ -81,6 +81,7 @@ import pandas as pd
 from popfc.data.census import load_all_pep
 from popfc.data.nysdol import load_nysdol_annual
 from popfc.paths import DATA_INTERIM, FULL_FIPS
+from popfc.reconcile import reconcile_county_population, resolve_pep_vintage
 
 pd.set_option("display.width", 160)
 pd.set_option("display.max_columns", 40)
@@ -227,18 +228,7 @@ the **later vintage** for non-decennial overlap, and keep both kinds
 semantic meaning.
 """),
     code("""
-# Rank vintages: later is better.
-_VINTAGE_RANK = {"v2010int": 0, "v2020": 1, "v2024": 2}
-
-def resolve_pep_vintage(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["_rank"] = df["vintage"].map(_VINTAGE_RANK).fillna(-1)
-    # Within each (geoid, year, kind), keep the highest-ranked vintage.
-    idx = (
-        df.groupby(["geoid", "year", "kind"])["_rank"].idxmax()
-    )
-    return df.loc[idx].drop(columns="_rank").reset_index(drop=True)
-
+# Implementation lives in popfc.reconcile (DEFAULT_PEP_VINTAGE_RANK there).
 pop_pep_resolved = resolve_pep_vintage(pop_pep)
 print(f"pop_pep:           {len(pop_pep):>6,} rows")
 print(f"pop_pep_resolved:  {len(pop_pep_resolved):>6,} rows")
@@ -259,53 +249,8 @@ output carries the `source`/`kind`/`vintage` of the selected value, plus a
 `rule` column documenting *why* it was chosen.
 """),
     code("""
-def reconcile(pop_pep_resolved: pd.DataFrame, pop_nysdol: pd.DataFrame) -> pd.DataFrame:
-    \"\"\"Apply reconciliation rules; return one row per (geoid, year).\"\"\"
-    # --- Rule 1: decennial anchors (2000, 2010, 2020) ----------------
-    # Use NYSDOL's "Census Base Population" (kind='census') for all three
-    # decennial years. This is a single curated series covering every
-    # decennial, making the anchor layer consistent across decades.
-    # (Census PEP's CENSUS2010POP agrees; its 2020+ file encodes the April-1
-    # 2020 count as ESTIMATESBASE2020, which we keep as kind='estimates_base'
-    # in the raw stack rather than re-labeling.)
-    decennial = pop_nysdol[
-        (pop_nysdol["kind"] == "census")
-        & (pop_nysdol["year"].isin([2000, 2010, 2020]))
-    ].copy()
-    decennial["rule"] = "decennial_census_nysdol"
-
-    # --- Rule 2: postcensal years (2021+) — Census PEP postcensal -----
-    postcensal = pop_pep_resolved[
-        (pop_pep_resolved["kind"] == "estimate")
-        & (pop_pep_resolved["year"] >= 2021)
-    ].copy()
-    postcensal["rule"] = "postcensal_census_pep"
-
-    # --- Rule 3: intercensal years (non-decennial pre-2020) — NYSDOL --
-    intercensal = pop_nysdol[
-        (pop_nysdol["kind"] == "intercensal")
-        & (pop_nysdol["year"].between(2001, 2019))
-        & (~pop_nysdol["year"].isin([2010]))
-    ].copy()
-    intercensal["rule"] = "intercensal_nysdol"
-
-    chosen = pd.concat(
-        [decennial, intercensal, postcensal],
-        ignore_index=True,
-    )
-
-    # Any (geoid, year) duplicates? There shouldn't be.
-    dup = chosen.groupby(["geoid", "year"]).size()
-    if (dup > 1).any():
-        bad = dup[dup > 1].reset_index()
-        raise AssertionError(f"Duplicate (geoid, year) after reconcile:\\n{bad}")
-
-    return (
-        chosen.sort_values(["geoid", "year"])
-        .reset_index(drop=True)
-    )
-
-reconciled = reconcile(pop_pep_resolved, pop_nysdol)
+# Reconciliation rules live in popfc.reconcile.reconcile_county_population.
+reconciled = reconcile_county_population(pop_pep_resolved, pop_nysdol)
 print(f"reconciled rows: {len(reconciled):,}")
 print("\\nRule usage:")
 print(reconciled["rule"].value_counts().to_string())

@@ -5,8 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from popfc.data._common import POP_LONG_COLUMNS
-from popfc.data.cdc import AGESEX_LONG_COLUMNS
+from popfc.data._common import AGESEX_LONG_COLUMNS, POP_LONG_COLUMNS
 from popfc.data.cornell import DEFAULT_CORNELL_XLS, load_cornell_pad
 
 

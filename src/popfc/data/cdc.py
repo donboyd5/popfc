@@ -29,8 +29,10 @@ from pathlib import Path
 import pandas as pd
 
 from popfc.data._common import (
+    AGESEX_LONG_COLUMNS,
     POP_LONG_COLUMNS,
     coerce_numeric,
+    enforce_agesex_long_schema,
     enforce_pop_long_schema,
     make_geoid,
     pad_county_fips,
@@ -41,24 +43,6 @@ from popfc.paths import CDC_DIR
 DEFAULT_CDC_WASHINGTON = (
     CDC_DIR / "Bridged-Race Population Estimates 1990-2020 _WashingtonCounty.txt"
 )
-
-# Schema of the age/sex/year long-format frame this loader emits in addition to
-# the POP_LONG_COLUMNS totals frame. Sex-by-age frames are needed for cohort-
-# component base years.
-AGESEX_LONG_COLUMNS: list[str] = [
-    "state_fips",
-    "county_fips",
-    "geoid",
-    "geography",
-    "year",
-    "sex",       # "F" | "M"
-    "age",       # int 0..85 (85 is top-coded "85+ years")
-    "age_top_coded",  # bool — True only for age==85
-    "population",
-    "source",
-    "vintage",
-    "notes",
-]
 
 
 def _read_wonder_tsv(path: Path) -> pd.DataFrame:
@@ -156,6 +140,7 @@ def load_cdc_bridged_race(
         "geoid": make_geoid(int(state_fips), int(county_fips)),
         "geography": geography,
         "year": coerce_numeric(detail[year_col], label="cdc/year", dtype="Int64").astype(int),
+        "kind": "estimate",
         "sex": detail["Sex Code"].astype(str).str.strip(),
         "age": age.astype(int),
         "age_top_coded": age.astype(int) == 85,
@@ -166,7 +151,7 @@ def load_cdc_bridged_race(
         "vintage": vintage,
         "notes": "",
     })
-    agesex = agesex[AGESEX_LONG_COLUMNS].reset_index(drop=True)
+    agesex = enforce_agesex_long_schema(agesex).reset_index(drop=True)
 
     # --- Build totals frame (one row per year, summed over sex × age) ---------
     # Prefer the WONDER-supplied "Total" rows where Sex Code is empty (totals

@@ -27,6 +27,7 @@ import pandas as pd
 from popfc.data._common import (
     add_geoid_columns,
     coerce_numeric,
+    enforce_agesex_long_schema,
     enforce_components_long_schema,
     enforce_pop_long_schema,
     read_csv_strings,
@@ -37,6 +38,7 @@ from popfc.paths import CENSUS_DIR
 DEFAULT_PEP_2020_PLUS = CENSUS_DIR / "2020-plus" / "co-est2024-alldata.csv"
 DEFAULT_PEP_2010_2020 = CENSUS_DIR / "2010-2020" / "co-est2020-alldata.csv"
 DEFAULT_PEP_2000_2010 = CENSUS_DIR / "2000-2010" / "co-est00int-tot.csv"
+DEFAULT_SYA_2020_PLUS = CENSUS_DIR / "2020-plus" / "cc-est2023-syasex-36.csv"
 
 # Census SUMLEV codes
 SUMLEV_STATE = 40
@@ -393,3 +395,134 @@ def load_all_pep(
             [a["components"], b["components"], c["components"]], ignore_index=True
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Single-year-of-age × sex × year loader (post-2020 vintages)
+# ---------------------------------------------------------------------------
+
+# YEAR-code mapping for `cc-est2023-syasex-36.csv` (vintage 2023 release).
+#
+# Census documents this mapping in the file's accompanying README. For this
+# vintage the codes are:
+#
+#   1 = 4/1/2020 Census enumeration       (kind='census',  calendar=2020)
+#   2 = 7/1/2020 Population Estimate      (kind='estimate', calendar=2020)
+#   3 = 7/1/2021 Population Estimate      (kind='estimate', calendar=2021)
+#   4 = 7/1/2022 Population Estimate      (kind='estimate', calendar=2022)
+#   5 = 7/1/2023 Population Estimate      (kind='estimate', calendar=2023)
+#
+# Verification: totals per (county, YEAR-code) match NYSDOL's `nysdol_2025-04-20`
+# series (which sources from Census PEP for 2020+) to the unit for every YEAR
+# code and every NY county. **Always re-verify when a newer vintage is dropped
+# in** — Census occasionally shifts the codes (older `cc-est20XX` files
+# include both 4/1/2020 Census and 4/1/2020 Estimates Base, so the mapping
+# has 6 codes instead of 5).
+_SYA_YEAR_MAP_V2023: dict[int, tuple[int, str]] = {
+    1: (2020, "census"),
+    2: (2020, "estimate"),
+    3: (2021, "estimate"),
+    4: (2022, "estimate"),
+    5: (2023, "estimate"),
+}
+
+
+def load_census_sya(
+    path: Path | str | None = None,
+    state_filter: str | None = "36",
+    year_map: dict[int, tuple[int, str]] | None = None,
+    vintage: str | None = None,
+) -> pd.DataFrame:
+    """Load the Census single-year-of-age × sex county-level file.
+
+    The 2020+ vintage file (`cc-est2023-syasex-36.csv`) carries population by
+    SUMLEV × STATE × COUNTY × YEAR-code × AGE, with separate columns for
+    TOT_POP, TOT_MALE, and TOT_FEMALE. This loader melts MALE/FEMALE into
+    long-format rows with a `sex` column and translates the YEAR code into a
+    calendar year + `kind` label (census vs estimate).
+
+    Parameters
+    ----------
+    path
+        Override the default file location.
+    state_filter
+        Restrict to a state FIPS string (default "36" for NY). Pass None to
+        load all states (the file ships per-state, so this is usually
+        redundant).
+    year_map
+        Override the YEAR-code mapping. Defaults to `_SYA_YEAR_MAP_V2023`.
+        Newer vintages may use a different mapping — re-verify before
+        upgrading the default.
+    vintage
+        Vintage tag for the output. Default is derived from the filename.
+
+    Returns
+    -------
+    DataFrame with AGESEX_LONG_COLUMNS schema, one row per
+    (geoid, year, kind, sex, age).
+    """
+    path = Path(path) if path is not None else DEFAULT_SYA_2020_PLUS
+    if year_map is None:
+        year_map = _SYA_YEAR_MAP_V2023
+    if vintage is None:
+        vintage = _derive_vintage(path, fallback="syasex_unknown")
+        if not vintage.startswith("sya_"):
+            vintage = f"sya_{vintage}"
+
+    raw = read_csv_strings(path)
+    # Filter to county rows (SUMLEV=050).
+    sumlev_norm = raw["SUMLEV"].astype(str).str.lstrip("0").replace("", "0")
+    df = raw[sumlev_norm == str(SUMLEV_COUNTY)].copy()
+    if state_filter is not None:
+        df = df[df["STATE"].astype(int) == int(state_filter)].copy()
+
+    df = add_geoid_columns(df, state_col="STATE", county_col="COUNTY")
+    df["geography"] = df["CTYNAME"]
+
+    year_code = coerce_numeric(df["YEAR"], label="census_sya/year_code", dtype="Int64")
+    age = coerce_numeric(df["AGE"], label="census_sya/age", dtype="Int64")
+
+    # Map year code → (calendar_year, kind). Drop rows whose code is unmapped
+    # (a noisy default avoids silently emitting under-the-wrong-year rows).
+    mapped = year_code.map(lambda v: year_map.get(int(v)) if pd.notna(v) else None)
+    unmapped = year_code[mapped.isna() & year_code.notna()].unique()
+    if len(unmapped) > 0:
+        import warnings
+        warnings.warn(
+            f"census_sya: unmapped YEAR codes {sorted(int(c) for c in unmapped)} — "
+            "rows dropped. Update year_map or the SYA YEAR-code documentation.",
+            stacklevel=2,
+        )
+    keep = mapped.notna()
+    df = df[keep].copy()
+    mapped = mapped[keep]
+    age = age[keep]
+
+    calendar_year = mapped.map(lambda t: t[0]).astype(int)
+    kind = mapped.map(lambda t: t[1])
+
+    # Melt TOT_MALE and TOT_FEMALE into a long sex/population frame.
+    frames = []
+    for sex_col, sex_code in (("TOT_MALE", "M"), ("TOT_FEMALE", "F")):
+        pop = coerce_numeric(
+            df[sex_col],
+            label=f"census_sya/{sex_col}/{vintage}",
+            dtype="Int64",
+        )
+        frames.append(pd.DataFrame({
+            "state_fips": df["state_fips"].to_numpy(),
+            "county_fips": df["county_fips"].to_numpy(),
+            "geoid": df["geoid"].to_numpy(),
+            "geography": df["geography"].to_numpy(),
+            "year": calendar_year.to_numpy(),
+            "kind": kind.to_numpy(),
+            "sex": sex_code,
+            "age": age.astype(int).to_numpy(),
+            "age_top_coded": (age.astype(int) == 85).to_numpy(),
+            "population": pop.to_numpy(),
+            "source": "census_sya",
+            "vintage": vintage,
+            "notes": "",
+        }))
+    out = pd.concat(frames, ignore_index=True)
+    return enforce_agesex_long_schema(out)

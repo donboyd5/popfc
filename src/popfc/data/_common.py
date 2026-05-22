@@ -45,6 +45,22 @@ COMPONENTS_LONG_COLUMNS: list[str] = [
     "notes",
 ]
 
+AGESEX_LONG_COLUMNS: list[str] = [
+    "state_fips",
+    "county_fips",
+    "geoid",
+    "geography",
+    "year",
+    "kind",         # "estimate" | "census" | "estimates_base" | "projection"
+    "sex",          # "F" | "M"
+    "age",          # int 0..85 (85 is typically top-coded)
+    "age_top_coded",  # bool
+    "population",
+    "source",
+    "vintage",
+    "notes",
+]
+
 
 # ---------------------------------------------------------------------------
 # FIPS helpers
@@ -97,6 +113,11 @@ def enforce_pop_long_schema(df: pd.DataFrame) -> pd.DataFrame:
 def enforce_components_long_schema(df: pd.DataFrame) -> pd.DataFrame:
     """Reorder/subset to COMPONENTS_LONG_COLUMNS, filling missing with None."""
     return _enforce_schema(df, COMPONENTS_LONG_COLUMNS)
+
+
+def enforce_agesex_long_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Reorder/subset to AGESEX_LONG_COLUMNS, filling missing with None."""
+    return _enforce_schema(df, AGESEX_LONG_COLUMNS)
 
 
 def _enforce_schema(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

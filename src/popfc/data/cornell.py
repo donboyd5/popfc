@@ -36,13 +36,14 @@ from pathlib import Path
 import pandas as pd
 
 from popfc.data._common import (
+    AGESEX_LONG_COLUMNS,
     coerce_numeric,
+    enforce_agesex_long_schema,
     enforce_pop_long_schema,
     make_geoid,
     pad_county_fips,
     pad_state_fips,
 )
-from popfc.data.cdc import AGESEX_LONG_COLUMNS
 from popfc.paths import CORNELL_DIR
 
 DEFAULT_CORNELL_XLS = CORNELL_DIR / "padprojections115.xls"
@@ -149,12 +150,13 @@ def load_cornell_pad(
     # --- agesex (single-year-of-age × sex, exclude SEX='All' & Median) ------
     agesex_rows = long[is_single_year_age & (long["SEX_DESCR"] != "All")].copy()
     age = agesex_rows["AGEGRPCODE"].astype(int)
-    agesex = pd.DataFrame({
+    agesex = enforce_agesex_long_schema(pd.DataFrame({
         "state_fips": agesex_rows["state_fips"],
         "county_fips": agesex_rows["county_fips"],
         "geoid": agesex_rows["geoid"],
         "geography": agesex_rows["geography"],
         "year": agesex_rows["year"].astype(int),
+        "kind": "projection",
         "sex": agesex_rows["SEX_DESCR"].map(lambda s: _SEX_CODE_MAP.get(s, s)),
         "age": age,
         "age_top_coded": age == 85,
@@ -162,7 +164,7 @@ def load_cornell_pad(
         "source": "cornell_pad",
         "vintage": vintage,
         "notes": "",
-    }).reset_index(drop=True)[AGESEX_LONG_COLUMNS]
+    })).reset_index(drop=True)
 
     _ = is_median  # explicitly dropped; reference quiets linters
 

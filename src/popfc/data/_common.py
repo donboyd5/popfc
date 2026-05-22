@@ -61,6 +61,23 @@ AGESEX_LONG_COLUMNS: list[str] = [
     "notes",
 ]
 
+LIFE_TABLE_COLUMNS: list[str] = [
+    "geoid",         # "US" | "36000" (state) | full 11-digit tract id
+    "geography",     # "United States" | "New York" | "Tract 100, Albany County"
+    "year_start",    # int — first year of period
+    "year_end",      # int — last year of period (== year_start for single-year tables)
+    "sex",           # "All" | "M" | "F"
+    "age",           # int — starting age of the band (0, 1, 5, 10, ...)
+    "age_band",      # string — "0-1", "1-5", "85+", "100+", "Under 1"
+    "qx",            # nullable Float64 — probability of dying between x and x+n
+    "lx",            # nullable Float64 — number surviving to age x (radix 100,000)
+    "Lx",            # nullable Float64 — person-years lived between x and x+n
+    "ex",            # nullable Float64 — expectation of life at age x (years)
+    "source",        # "nchs_nvsr" | "nchs_usaleep"
+    "vintage",       # publication tag, e.g., "nvsr74-06" or "usaleep_2010_2015"
+    "notes",
+]
+
 
 # ---------------------------------------------------------------------------
 # FIPS helpers
@@ -118,6 +135,11 @@ def enforce_components_long_schema(df: pd.DataFrame) -> pd.DataFrame:
 def enforce_agesex_long_schema(df: pd.DataFrame) -> pd.DataFrame:
     """Reorder/subset to AGESEX_LONG_COLUMNS, filling missing with None."""
     return _enforce_schema(df, AGESEX_LONG_COLUMNS)
+
+
+def enforce_life_table_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Reorder/subset to LIFE_TABLE_COLUMNS, filling missing with None."""
+    return _enforce_schema(df, LIFE_TABLE_COLUMNS)
 
 
 def _enforce_schema(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

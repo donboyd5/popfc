@@ -1,5 +1,15 @@
 # Washington County NY Population Forecast — Python Project Planning
 
+> **Quick resume prompt:** *Please read docs/planning.md then read other files as needed and tell me status and suggest next steps.* (Full session-resume prompt is at the bottom of this file.)
+
+## Goals
+
+I want to forecast annual population of counties in the Washington County area of New York and the towns within Washington County. Those towns sum to the county total. I want the county forecasts to follow a cohort-components method similar to that implemented by Cornell University.
+
+The town forecasts for Washington County should sum to the county forecast. They do not necessarily have to use the same forecasting method as the county method. It might be that we use a simpler method for the towns and then force them to sum to the county using an optimization approach. However we will need to be able to estimate some details of the town forecasts.
+
+One main reason I am doing this is so that I can understand the drivers of population growth or decline in the towns of southern Washington County. Thus the need for components. I also want to be able to understand, going forward, what possibilities there are. For example, to what extent is population decline almost inevitable due to changing demographics and fertility and birth rates? To what extent could that be mitigated or reversed through domestic or international in-migration?
+
 ## Context
 
 Rebuild of the R/Quarto project in `popfc_R/` as a proper Python project with
@@ -40,7 +50,7 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 
 ---
 
-## Current Status (as of 2026-04-19)
+## Current Status (as of 2026-05-22)
 
 ### Phase 0 — COMPLETE
 
@@ -84,11 +94,18 @@ Companion generator `notebooks/_build_01_reconciliation.py` produces the noteboo
 
 #### Phase 1 still-to-do
 
-- Notebook 02 — components audit (Census PEP vs NYSDOH vs NCHS; verify Pop(t) = Pop(t-1) + B − D + NetMig identity)
-- CDC Bridged-Race loader + Notebook 03 — age/sex audit
-- NYSDOH vital-stats loader (independent births/deaths for cross-check)
-- Cornell PAD loader (forecast benchmark)
-- Promote reconciliation logic from the notebook into `src/popfc/reconcile.py` once rules are stable
+Active chunk (in progress on `feat/phase-1-data-reconciliation`):
+
+1. **CDC Bridged-Race loader** (`src/popfc/data/cdc.py`) — Washington-only WONDER export, 1990–2020 single-year-of-age by sex. Unblocks Phase 3 cohort base year as well as the age/sex audit.
+2. **NYSDOH loader** (`src/popfc/data/nysdoh.py`) — population by age/sex/race/county 2003+ from the existing file; flag births/deaths API pulls as a follow-on issue.
+3. **Notebook 02 — components audit** (`notebooks/02_components_audit.ipynb` + companion `_build_02_components_audit.py`): cross-check Census PEP vs NYSDOH births/deaths; verify the demographic identity Pop(t) = Pop(t-1) + B − D + NetMig per county; write `data_interim/county_components.parquet`.
+4. **Promote reconciliation logic** from Notebook 01 into `src/popfc/reconcile.py` with a unit test.
+
+After this chunk:
+
+- Notebook 03 — age/sex audit (CDC Bridged-Race 1990–2020 vs Census SYA 2020–2023; continuity across 2020 seam).
+- Cornell PAD loader (forecast benchmark; small, can ride with Notebook 03 or later).
+- Decision: extend the reconciled series back to 1970 using NYSDOL?
 
 ### Data already present in `data_raw/`
 
@@ -106,6 +123,18 @@ Companion generator `notebooks/_build_01_reconciliation.py` produces the noteboo
 - **Sub-county vital statistics** — births/deaths at town level (likely only 5-year averages for small places)
 - **NCHS / SSA life tables** — age-sex mortality rates (`NY_B.XLSX` small-area file for WashCo tracts)
 - **Possibly BEA** — covariates for migration models
+
+### Future data refresh (not urgent)
+
+At some point — likely once the first forecast iteration is complete — we should pull a fresher vintage of every input data source. For most sources an additional year of data is expected to be available (e.g., Census PEP vintage `v2025`, NYSDOL through 2024, NYSDOH through a more recent year, IRS migration through the latest tax year).
+
+Design implications already in place so this is cheap when we do it:
+
+- Every loader accepts a `path` (and usually a `vintage`) parameter and auto-derives the vintage tag from the filename. Replacing an upstream file is a one-line change at the call site, not an edit deep in code.
+- Raw files live under `data_raw/<source>/` as a copy of `popfc_R/data_raw/` (refreshable with `rsync -a --delete popfc_R/data_raw/ data_raw/`).
+- The reconciliation rules in Notebook 01 handle vintage overlap by keeping the latest, so adding a newer PEP vintage just extends the postcensal series automatically.
+
+When we do refresh: drop newer files into `data_raw/`, update the `DEFAULT_*` constants in each loader (or pass paths explicitly), re-run notebooks 01–03, verify the QA checks still pass, and re-run downstream forecasts. Eventually formalize as `src/popfc/data/download.py` with per-source pull scripts (see "Deferred: data refresh pipeline" in cross-session memory).
 
 ---
 
@@ -301,6 +330,7 @@ Copy-paste into a new session to continue:
 
 ## Critical files / references
 
+- `CLAUDE.md` (project root) — durable project rules (git workflow, data conventions, code conventions)
 - [docs/r_reference/README.md](r_reference/README.md) — index of preserved R materials
 - [docs/r_reference/methodology.qmd](r_reference/methodology.qmd) — Cornell PAD methodology (prose)
 - [docs/r_reference/steps.qmd](r_reference/steps.qmd) — high-level forecasting workflow

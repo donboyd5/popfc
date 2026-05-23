@@ -365,20 +365,41 @@ jupyter lab
 
 Copy-paste into a new session to continue:
 
-> I'm continuing a Python project to forecast annual population for Washington County, NY and its constituent towns. The project root is `/home/donboyd5/Documents/python_projects/popfc/`. The virtualenv is at `.venv/`; the installable package is at `src/popfc/`; Python is 3.12. The repo is at https://github.com/donboyd5/popfc.
+> I'm continuing the popfc project — Python population forecast for Washington
+> County, NY and its 17 towns. Project root is
+> `/home/donboyd5/Documents/python_projects/popfc/`. Python 3.12 venv at `.venv/`,
+> installable package at `src/popfc/`. Repo at https://github.com/donboyd5/popfc.
 >
-> **Start by reading `docs/planning.md` in full.** It has the current status, scope decisions, and next steps.
+> **Status: Phases 1-5 are COMPLETE and merged to main (commit `4af5a61`).**
+> The full pipeline (Notebooks 01-10) produces a working forecast end-to-end.
+> 130 tests pass.
+>
+> Start by reading, in order:
+> 1. `CLAUDE.md`            — project rules (git workflow, data conventions)
+> 2. `docs/workflow.md`     — how to run the pipeline end-to-end
+> 3. `docs/planning.md`     — phase-by-phase status; the Current Status block summarizes Phases 1-5
+> 4. `docs/data_dictionary.md` — column reference for every parquet artifact
+>
+> Headline outputs already exist:
+> - `data_interim/county_forecasts.parquet` — 6 counties × 3 scenarios × 28 yrs × age × sex
+> - `data_interim/town_forecasts.parquet`   — 17 Washington towns × 3 scenarios × 6 yrs × age-band × sex
+> - `data_final/*` — clean CSV + parquet exports for downstream use
+> - `notebooks/10_final_summary.ipynb` — current summary charts
 >
 > Key reminders:
-> - Phase 0 (env + scaffolding) is complete; smoke tests pass.
-> - Phase 1 (data audit & reconciliation) is COMPLETE and merged to main at `408aaa4`. Loaders for every raw data source are in `src/popfc/data/`; notebooks 01–03 produce `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. See planning.md for reconciliation rules.
-> - Phase 2 (external data) is IN PROGRESS on `feat/phase-2-external-data`. ACS 5-year loader (`src/popfc/data/acs.py`) and the first three tables (B01001/B07001/B06001) at county and MCD level are pulled and cached. Census API key required for live pulls (`CENSUS_API_KEY` env var); cached responses serve offline.
-> - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Coercion failures warn (don't silently mask). Apply this pattern to every new loader.
-> - Legacy R project was deleted in Phase 5; its prose/R docs remain at `docs/r_reference/` for reference only — **do not feel constrained by the R implementation; always apply Python best practices.**
-> - Scope: cohort-component engine is county-agnostic (FIPS param). Primary output for Washington County + towns; validation-cohort output for 5 neighbor counties; sanity-sweep totals across all 62.
-> - Git workflow: **never work on main**. Primary tree is on a feature branch (code). Worktree `.worktree-docs/` is pinned to a long-lived `docs/main` branch (docs). Both code and docs merge into `main` via normal branch flow — `main` never receives direct commits. Push feature branches to GitHub; merges to main are lightweight (solo repo, PRs optional).
+> - **Never work on main.** Code goes on `feat/*` branches; docs go on the long-lived `docs/main` branch via the worktree at `.worktree-docs/`. Both merge into `main` via normal branch flow. See `CLAUDE.md` for the full rules.
+> - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Apply this to any new loader.
+> - The legacy R/Quarto project was deleted in Phase 5; its prose/R docs remain at `docs/r_reference/` for reference only.
+> - Census API key is read from `CENSUS_API_KEY` env var. ACS responses are cached under `data_raw/acs/<year>/`.
 >
-> Check `docs/planning.md` "Current Status" and "Phase 1 still-to-do" sections for what's next. Check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance (including the string-first preference).
+> **What I want to do this session:** [fill in — e.g., add more plots and
+> analyses to the forecast outputs; build a sensitivity analysis; add
+> geographic maps of Washington towns; etc.] Build new analyses as a new
+> notebook (`notebooks/11_<name>.ipynb` with companion `_build_11_*.py`
+> generator script) — don't modify Notebook 10. Cut a new feat branch
+> (`feat/<descriptive>`) from main before writing code.
+>
+> Also check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance.
 
 ---
 

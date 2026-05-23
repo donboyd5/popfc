@@ -40,9 +40,10 @@ If you came here asking "do I run a script or open each notebook?" — the short
                                                      low/base/high × 6 counties)
                                        │
                                        ▼
-                       Phase 4 (forthcoming):
-                       Notebook 09 → town_forecasts.parquet
-                       (Hamilton-Perry or ARIMA per MCD, constrained to county totals)
+  Notebook 09 → town_forecasts.parquet              (Hamilton-Perry per MCD,
+                                                     constrained to county totals,
+                                                     17 Washington towns, 2022 → 2047,
+                                                     5-year cadence)
 ```
 
 Each notebook lives at `notebooks/<NN>_<name>.ipynb` and has a companion `notebooks/_build_<NN>_<name>.py` that **regenerates** the notebook from a Python script. The regeneration is one-way: edit `_build_*.py`, run it, then re-execute the notebook. This keeps the notebook contents diff-friendly in git (stripped outputs via nbstripout).
@@ -65,7 +66,7 @@ python -m popfc.data.download
 for nb in 01_population_reconciliation 02_components_audit \
           03_age_sex_audit 04_external_data \
           05_fertility 06_mortality 07_migration \
-          08_county_forecast; do
+          08_county_forecast 09_town_forecast; do
   jupyter nbconvert --to notebook --execute "notebooks/${nb}.ipynb" \
                      --output "${nb}.ipynb"
 done
@@ -74,12 +75,13 @@ done
 pytest -q
 ```
 
-That's it. The four "headline" outputs are:
+That's it. The five "headline" outputs are:
 
 - `data_interim/population_reconciled.parquet` — historical population
 - `data_interim/county_components.parquet`     — historical components of change
 - `data_interim/county_agesex_1990_2023.parquet` — historical age × sex
-- `data_interim/county_forecasts.parquet`      — projections 2023 → 2050
+- `data_interim/county_forecasts.parquet`      — county projections 2023 → 2050
+- `data_interim/town_forecasts.parquet`        — Washington town projections 2022 → 2047
 
 ------------------------------------------------------------------------
 
@@ -149,6 +151,18 @@ projecting last year's pop forward by survival. Averaged across the
 for Washington + 5 validation counties, 2023 → 2050, under three
 scenarios (low / baseline / high). Overlays the Cornell PAD benchmark.
 
+### 09 — Town forecast
+
+**Reads:** ACS B01001 for Washington MCDs (cached, two vintages —
+2015-2019 and 2020-2024) + `county_forecasts.parquet`
+**Writes:** `town_forecasts.parquet`
+**Method:** Hamilton-Perry per town (17 MCDs in Washington County) using
+empirical cohort-change ratios from the two ACS vintages, with CCRs
+capped at `[0.5, 2.0]` to dampen small-area sampling noise. CWR closure
+for the 0-4 band. Projections at 5-year cadence (2022, 2027, 2032, 2037,
+2042, 2047). At each forecast year, town totals are pro-rata constrained
+to the matching county forecast under each scenario.
+
 ------------------------------------------------------------------------
 
 ## Dependencies between notebooks
@@ -160,19 +174,22 @@ to re-run everything downstream. The dependencies are:
 01 ──► 02 ──► 05 ──┐
               │     │
               ▼     │
-03 ──────────────────┼──► 08
+03 ──────────────────┼──► 08 ──► 09
               │     │
 04 ──► 06 ────┘     │
    │                │
    └───► 07 ────────┘
+   │
+   └─── (ACS pulls) ──► 09 directly (B01001 MCD)
 ```
 
 Practically:
 
 - Refreshing raw data → re-run 01, 02, 03, 04 (then everything downstream)
-- A newer ACS vintage → re-run only 04 (then nothing changes downstream unless ACS is used by a Phase-4 town model)
-- A newer NCHS life table → re-run 04, 06, 07, 08
-- Changing forecast scenarios → re-run only 08
+- A newer ACS vintage → re-run 04 (and 09, which reads ACS for MCDs directly)
+- A newer NCHS life table → re-run 04, 06, 07, 08, 09
+- Changing forecast scenarios → re-run 08 then 09
+- Changing the town-level CCR cap → re-run only 09
 
 ------------------------------------------------------------------------
 
@@ -235,18 +252,25 @@ changes needed.
 
 ------------------------------------------------------------------------
 
-## Phase 4 — town forecasts (not yet built)
+## Phase 4 — town forecasts (delivered in Notebook 09)
 
-The plan for Washington County's 17 MCDs:
+Hamilton-Perry projector applied to each of Washington's 17 towns,
+with town totals pro-rata constrained to the Notebook 08 county
+forecast under each scenario. Outputs are at 5-year cadence (2022,
+2027, ..., 2047).
 
-1. Load ACS B01001 for Washington's MCDs (already cached in
-   `data_raw/acs/2024/`).
-2. Either (a) run a town-level cohort-component model using MCD age × sex
-   from ACS, or (b) run simpler statistical models (ARIMA / ETS) on
-   total town population from `sub-est2023.csv`.
-3. Constrain the town forecasts to sum to the Washington county
-   forecast from Notebook 08, via pro-rata or iterative
-   proportional fitting (IPF). This will be `notebooks/09_town_forecast.ipynb`.
+For very small towns (Putnam at 540, Dresden at 551, Hampton at
+1,145), ACS sampling noise produces noisy per-cohort CCRs that can
+compound to implausible projections. The default `[0.5, 2.0]` cap on
+CCRs prevents the worst runaways; tighter caps `[0.7, 1.5]` further
+dampen at the cost of more conservative town-to-town variation.
+
+Possible refinements not in v1:
+- IPF constraint (match county age × sex marginals, not just total)
+- Use county-level CCRs as a fallback when town CCRs hit the cap
+- Multiple ACS vintages averaged for a smoother baseline
+- Town-level cohort-component model where sub-county vital stats
+  exist (e.g., NYSDOH births by sub-county place if pulled later)
 
 ------------------------------------------------------------------------
 
@@ -279,8 +303,8 @@ causes are:
 2. **A schema constant moved**. The canonical schemas live in
    `src/popfc/data/_common.py` (POP_LONG, COMPONENTS_LONG, AGESEX_LONG,
    LIFE_TABLE) and `src/popfc/models/*.py` (SURVIVAL_RATES,
-   ASFR_LONG, NET_MIGRATION_RATES, PROJECTION). Loaders' output frames
-   must match these column orders exactly.
+   ASFR_LONG, NET_MIGRATION_RATES, PROJECTION, HP_PROJECTION). Loaders'
+   output frames must match these column orders exactly.
 3. **The test suite catches almost all of this** —
    run `pytest -q` and follow the failures backward.
 

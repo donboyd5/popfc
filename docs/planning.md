@@ -58,7 +58,22 @@ Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data 
 
 Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
 
-### Phase 3 — COMPLETE on `feat/phase-3-cohort-component` (not yet merged)
+### Phase 4 — COMPLETE on `feat/phase-4-town-forecasts` (not yet merged)
+
+Hamilton-Perry projector for Washington County's 17 towns plus a pro-rata constraint to the county forecasts under all 3 scenarios.
+
+**New modules:**
+
+- `src/popfc/models/hamilton_perry.py` — `aggregate_b01001_to_5yr_bands()`, `cohort_change_ratios(cap=(0.5, 2.0))`, `child_woman_ratios()`, `project_one_county_hp()`. CCR cap dampens small-area ACS sampling noise.
+- `src/popfc/constrain/prorata.py` — `apply_prorata_constraint()` scales sub-areas to match parent totals.
+
+**Notebook 09 — `notebooks/09_town_forecast.ipynb`** uses two ACS vintages (2015-2019 and 2020-2024) to compute CCRs, projects each town 2022 → 2047 in 5-year steps, applies pro-rata constraint at every forecast year for each of low/baseline/high scenarios. Output: `data_interim/town_forecasts.parquet` (11,016 rows = 17 towns × 3 scenarios × 6 years × 2 sexes × 18 bands).
+
+**Headline town trajectories** (baseline 2022 → 2047): All 17 Washington towns decline except Greenwich (+29%), Cambridge (+20%), and Hampton (+188% — flagged as a small-town anomaly even after capping). The fastest declines are in the smallest northern towns (Dresden, Hebron, Putnam).
+
+**Tests: 137 passing** (8 hamilton_perry + 4 prorata added).
+
+### Phase 3 — COMPLETE on `feat/phase-3-cohort-component` (merged to main `7b3e7cd`)
 
 Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing.
 

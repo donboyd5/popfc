@@ -58,7 +58,24 @@ Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data 
 
 Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
 
-### Phase 4 — COMPLETE on `feat/phase-4-town-forecasts` (not yet merged)
+### Phase 5 — IN PROGRESS on `feat/phase-5-reporting` (not yet merged)
+
+Wrap-up: clean exports for downstream consumers + a summary notebook.
+
+**New code:**
+
+- `src/popfc/reporting/export.py` — `write_final_exports()` produces a tidy set of CSV/parquet artifacts under `data_final/`: `summary_headline.csv`, `washington_history.csv`, `washington_components.csv`, `county_forecast_totals.csv`, `county_forecast_agesex.parquet`, `town_forecast_totals.csv`, `town_forecast_agesex.parquet`.
+
+**Notebook 10 — `notebooks/10_final_summary.ipynb`** — five-section narrative summary: (1) headline trajectory with Cornell PAD overlay, (2) cohort context indexed to 2023, (3) decomposition of decline into natural change vs net migration, (4) age pyramid 2023 vs 2050, (5) per-town table and chart with town shares. Last cell calls `write_final_exports()`.
+
+**Data dictionary** at `docs/data_dictionary.md` — one section per `data_interim/` and `data_final/` artifact with column types and brief descriptions.
+
+#### Phase 5 still-to-do (small)
+
+- Decision on whether to delete `popfc_R/` (the original R project preserved in `docs/r_reference/` as well).
+- Optional: small README polish; optional Streamlit dashboard.
+
+### Phase 4 — COMPLETE on `feat/phase-4-town-forecasts` (merged to main `acd3e59`)
 
 Hamilton-Perry projector for Washington County's 17 towns plus a pro-rata constraint to the county forecasts under all 3 scenarios.
 
@@ -69,13 +86,13 @@ Hamilton-Perry projector for Washington County's 17 towns plus a pro-rata constr
 
 **Notebook 09 — `notebooks/09_town_forecast.ipynb`** uses two ACS vintages (2015-2019 and 2020-2024) to compute CCRs, projects each town 2022 → 2047 in 5-year steps, applies pro-rata constraint at every forecast year for each of low/baseline/high scenarios. Output: `data_interim/town_forecasts.parquet` (11,016 rows = 17 towns × 3 scenarios × 6 years × 2 sexes × 18 bands).
 
-**Headline town trajectories** (baseline 2022 → 2047): All 17 Washington towns decline except Greenwich (+29%), Cambridge (+20%), and Hampton (+188% — flagged as a small-town anomaly even after capping). The fastest declines are in the smallest northern towns (Dresden, Hebron, Putnam).
+**Headline town trajectories** (baseline 2022 → 2047): 14 of 17 Washington towns decline; Greenwich (+29%), Cambridge (+20%), and Hampton (+188% — flagged as a small-town anomaly even after capping) grow. The fastest declines are in the smallest northern towns (Dresden, Hebron, Putnam).
 
-**Tests: 137 passing** (8 hamilton_perry + 4 prorata added).
+**Tests: 130 passing** (8 hamilton_perry + 4 prorata added on top of 118).
 
 ### Phase 3 — COMPLETE on `feat/phase-3-cohort-component` (merged to main `7b3e7cd`)
 
-Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing.
+Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing as of merge.
 
 **Modules** (`src/popfc/models/`):
 

@@ -12,10 +12,10 @@ One main reason I am doing this is so that I can understand the drivers of popul
 
 ## Context
 
-Rebuild of the R/Quarto project in `popfc_R/` as a proper Python project with
-rigorous data validation. The original R project is preserved as reference and
-will eventually be deleted; all its documents and R source have been preserved
-under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
+Rebuild of the legacy R/Quarto project (formerly at `popfc_R/`, deleted in
+Phase 5) as a proper Python project with rigorous data validation. The R
+project's documents and R source remain available under `docs/r_reference/`;
+raw data lives in `data_raw/` (fetched via the download pipeline).
 
 ### User priorities (emphasized explicitly)
 
@@ -26,7 +26,7 @@ under `docs/r_reference/`, and all its raw data copied to `data_raw/`.
 
 ### Guiding principles (cross-session)
 
-- **Not constrained by the R implementation.** `popfc_R/` is reference material, not a template. Apply Python best practices and modern demographic-forecasting approaches even when they depart from the R code.
+- **Not constrained by the R implementation.** `docs/r_reference/` is reference material, not a template. Apply Python best practices and modern demographic-forecasting approaches even when they depart from the R code.
 - Prefer vectorized / array-based operations over per-unit loops.
 - Prefer well-documented, tested library functions over notebook-only code.
 - Every notebook ends with assertions / sanity checks.
@@ -58,7 +58,24 @@ Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data 
 
 Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
 
-### Phase 4 — COMPLETE on `feat/phase-4-town-forecasts` (not yet merged)
+### Phase 5 — IN PROGRESS on `feat/phase-5-reporting` (not yet merged)
+
+Wrap-up: clean exports for downstream consumers + a summary notebook.
+
+**New code:**
+
+- `src/popfc/reporting/export.py` — `write_final_exports()` produces a tidy set of CSV/parquet artifacts under `data_final/`: `summary_headline.csv`, `washington_history.csv`, `washington_components.csv`, `county_forecast_totals.csv`, `county_forecast_agesex.parquet`, `town_forecast_totals.csv`, `town_forecast_agesex.parquet`.
+
+**Notebook 10 — `notebooks/10_final_summary.ipynb`** — five-section narrative summary: (1) headline trajectory with Cornell PAD overlay, (2) cohort context indexed to 2023, (3) decomposition of decline into natural change vs net migration, (4) age pyramid 2023 vs 2050, (5) per-town table and chart with town shares. Last cell calls `write_final_exports()`.
+
+**Data dictionary** at `docs/data_dictionary.md` — one section per `data_interim/` and `data_final/` artifact with column types and brief descriptions.
+
+#### Phase 5 still-to-do (small)
+
+- Done in Phase 5 cleanup: `popfc_R/` has been deleted (`docs/r_reference/` retains the prose/R code for reference).
+- Optional: small README polish; optional Streamlit dashboard.
+
+### Phase 4 — COMPLETE on `feat/phase-4-town-forecasts` (merged to main `acd3e59`)
 
 Hamilton-Perry projector for Washington County's 17 towns plus a pro-rata constraint to the county forecasts under all 3 scenarios.
 
@@ -69,13 +86,13 @@ Hamilton-Perry projector for Washington County's 17 towns plus a pro-rata constr
 
 **Notebook 09 — `notebooks/09_town_forecast.ipynb`** uses two ACS vintages (2015-2019 and 2020-2024) to compute CCRs, projects each town 2022 → 2047 in 5-year steps, applies pro-rata constraint at every forecast year for each of low/baseline/high scenarios. Output: `data_interim/town_forecasts.parquet` (11,016 rows = 17 towns × 3 scenarios × 6 years × 2 sexes × 18 bands).
 
-**Headline town trajectories** (baseline 2022 → 2047): All 17 Washington towns decline except Greenwich (+29%), Cambridge (+20%), and Hampton (+188% — flagged as a small-town anomaly even after capping). The fastest declines are in the smallest northern towns (Dresden, Hebron, Putnam).
+**Headline town trajectories** (baseline 2022 → 2047): 14 of 17 Washington towns decline; Greenwich (+29%), Cambridge (+20%), and Hampton (+188% — flagged as a small-town anomaly even after capping) grow. The fastest declines are in the smallest northern towns (Dresden, Hebron, Putnam).
 
-**Tests: 137 passing** (8 hamilton_perry + 4 prorata added).
+**Tests: 130 passing** (8 hamilton_perry + 4 prorata added on top of 118).
 
 ### Phase 3 — COMPLETE on `feat/phase-3-cohort-component` (merged to main `7b3e7cd`)
 
-Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing.
+Cohort-component projector + the three input prep notebooks are all built and producing results. Tests: 118 passing as of merge.
 
 **Modules** (`src/popfc/models/`):
 
@@ -188,9 +205,8 @@ popfc/
 ├── .venv/                      virtualenv (gitignored)
 ├── docs/
 │   ├── planning.md             this file
-│   └── r_reference/            preserved .qmd, .R, images, CLAUDE.md from popfc_R
-├── popfc_R/                    will be deleted once Phase 1 confirms nothing is lost
-├── data_raw/                   copy of popfc_R/data_raw (gitignored)
+│   └── r_reference/            preserved .qmd, .R, images, CLAUDE.md from the legacy R project
+├── data_raw/                   raw source data (gitignored; fetched via download pipeline)
 ├── data_interim/               cleaned/harmonized parquet files (gitignored)
 ├── data_final/                 forecast outputs (gitignored)
 ├── notebooks/                  01_population_reconciliation.ipynb, ... 08_town_forecast.ipynb
@@ -274,7 +290,7 @@ popfc/
 - Final summary notebook (charts, tables, data dictionary)
 - Export CSV/parquet for downstream use
 - Optional: Streamlit or Plotly Dash dashboard
-- Decision on whether to delete `popfc_R/`
+- Done in Phase 5 cleanup: `popfc_R/` has been deleted (`docs/r_reference/` retains the prose/R code for reference).
 
 ---
 
@@ -329,8 +345,8 @@ pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install -e .
 python -m ipykernel install --user --name popfc --display-name "Python (popfc)"
-cp -r popfc_R/data_raw ./data_raw
-mkdir -p data_interim data_final
+mkdir -p data_raw data_interim data_final
+python -m popfc.data.download              # fetch the automated sources
 pytest -q
 ```
 
@@ -358,7 +374,7 @@ Copy-paste into a new session to continue:
 > - Phase 1 (data audit & reconciliation) is COMPLETE and merged to main at `408aaa4`. Loaders for every raw data source are in `src/popfc/data/`; notebooks 01–03 produce `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. See planning.md for reconciliation rules.
 > - Phase 2 (external data) is IN PROGRESS on `feat/phase-2-external-data`. ACS 5-year loader (`src/popfc/data/acs.py`) and the first three tables (B01001/B07001/B06001) at county and MCD level are pulled and cached. Census API key required for live pulls (`CENSUS_API_KEY` env var); cached responses serve offline.
 > - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Coercion failures warn (don't silently mask). Apply this pattern to every new loader.
-> - R project at `popfc_R/` is reference only; its docs are preserved at `docs/r_reference/`. It will eventually be deleted — **do not feel constrained by the R implementation; always apply Python best practices.**
+> - Legacy R project was deleted in Phase 5; its prose/R docs remain at `docs/r_reference/` for reference only — **do not feel constrained by the R implementation; always apply Python best practices.**
 > - Scope: cohort-component engine is county-agnostic (FIPS param). Primary output for Washington County + towns; validation-cohort output for 5 neighbor counties; sanity-sweep totals across all 62.
 > - Git workflow: **never work on main**. Primary tree is on a feature branch (code). Worktree `.worktree-docs/` is pinned to a long-lived `docs/main` branch (docs). Both code and docs merge into `main` via normal branch flow — `main` never receives direct commits. Push feature branches to GitHub; merges to main are lightweight (solo repo, PRs optional).
 >

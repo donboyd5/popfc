@@ -44,6 +44,11 @@ If you came here asking "do I run a script or open each notebook?" — the short
                                                      constrained to county totals,
                                                      17 Washington towns, 2022 → 2047,
                                                      5-year cadence)
+                                       │
+                                       ▼
+  Notebook 10 → data_final/*                        (clean CSV + parquet exports
+                                                     for downstream consumers;
+                                                     headline charts + decomposition)
 ```
 
 Each notebook lives at `notebooks/<NN>_<name>.ipynb` and has a companion `notebooks/_build_<NN>_<name>.py` that **regenerates** the notebook from a Python script. The regeneration is one-way: edit `_build_*.py`, run it, then re-execute the notebook. This keeps the notebook contents diff-friendly in git (stripped outputs via nbstripout).
@@ -66,7 +71,7 @@ python -m popfc.data.download
 for nb in 01_population_reconciliation 02_components_audit \
           03_age_sex_audit 04_external_data \
           05_fertility 06_mortality 07_migration \
-          08_county_forecast 09_town_forecast; do
+          08_county_forecast 09_town_forecast 10_final_summary; do
   jupyter nbconvert --to notebook --execute "notebooks/${nb}.ipynb" \
                      --output "${nb}.ipynb"
 done
@@ -75,13 +80,19 @@ done
 pytest -q
 ```
 
-That's it. The five "headline" outputs are:
+That's it. The headline outputs are:
 
 - `data_interim/population_reconciled.parquet` — historical population
 - `data_interim/county_components.parquet`     — historical components of change
 - `data_interim/county_agesex_1990_2023.parquet` — historical age × sex
 - `data_interim/county_forecasts.parquet`      — county projections 2023 → 2050
 - `data_interim/town_forecasts.parquet`        — Washington town projections 2022 → 2047
+- `data_final/*`                                — cleaned CSV+parquet exports for downstream use (Notebook 10)
+
+For consumers who don't need the full pipeline, `data_final/` is the
+entry point — `summary_headline.csv`, `county_forecast_totals.csv`,
+`town_forecast_totals.csv`, plus the full-detail age × sex parquets.
+Column descriptions live in [`docs/data_dictionary.md`](data_dictionary.md).
 
 ------------------------------------------------------------------------
 
@@ -163,6 +174,17 @@ for the 0-4 band. Projections at 5-year cadence (2022, 2027, 2032, 2037,
 2042, 2047). At each forecast year, town totals are pro-rata constrained
 to the matching county forecast under each scenario.
 
+### 10 — Final summary
+
+**Reads:** every `data_interim/*` parquet
+**Writes:** every `data_final/*` artifact (via
+`popfc.reporting.export.write_final_exports`); no new interim file.
+**Content:** headline trajectory under three scenarios with Cornell PAD
+overlay; cohort context (Washington vs five neighbors); decomposition
+of decline into natural change vs net migration; age pyramid 2023 vs
+2050; per-town table and trajectory chart; town shares of county. Last
+cell regenerates `data_final/`.
+
 ------------------------------------------------------------------------
 
 ## Dependencies between notebooks
@@ -174,7 +196,7 @@ to re-run everything downstream. The dependencies are:
 01 ──► 02 ──► 05 ──┐
               │     │
               ▼     │
-03 ──────────────────┼──► 08 ──► 09
+03 ──────────────────┼──► 08 ──► 09 ──► 10
               │     │
 04 ──► 06 ────┘     │
    │                │
@@ -188,8 +210,10 @@ Practically:
 - Refreshing raw data → re-run 01, 02, 03, 04 (then everything downstream)
 - A newer ACS vintage → re-run 04 (and 09, which reads ACS for MCDs directly)
 - A newer NCHS life table → re-run 04, 06, 07, 08, 09
-- Changing forecast scenarios → re-run 08 then 09
-- Changing the town-level CCR cap → re-run only 09
+- Changing forecast scenarios → re-run 08, 09, 10
+- Changing the town-level CCR cap → re-run 09 and 10
+- Re-exporting `data_final/` only → re-run 10 (or
+  `python -c 'from popfc.reporting.export import write_final_exports; write_final_exports()'`)
 
 ------------------------------------------------------------------------
 
@@ -284,8 +308,8 @@ pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install -e .
 python -m ipykernel install --user --name popfc --display-name "Python (popfc)"
-cp -r popfc_R/data_raw ./data_raw      # initial raw-data copy
-mkdir -p data_interim data_final
+mkdir -p data_raw data_interim data_final
+python -m popfc.data.download          # fetch the automated sources
 pytest -q                              # confirms install
 ```
 

@@ -14,20 +14,24 @@ popfc/
 ├── pyproject.toml           project metadata + loose deps (makes `popfc` importable)
 ├── requirements.txt         pinned runtime deps for reproducibility
 ├── requirements-dev.txt     pytest, ruff, nbstripout
-├── docs/planning.md         master plan (read this first)
-├── popfc_R/                 previous R/Quarto implementation, kept for reference
-├── data_raw/                raw source data (not committed; copied from popfc_R/data_raw)
+├── CLAUDE.md                durable project rules (git workflow, conventions)
+├── docs/
+│   ├── planning.md          master plan and phase status (read this first)
+│   ├── workflow.md          how to run the pipeline end-to-end
+│   ├── data_dictionary.md   schemas for every interim/final artifact
+│   └── r_reference/         preserved .qmd / .R prose from the legacy R project
+├── data_raw/                raw source data (not committed; fetched via download script)
 ├── data_interim/            cleaned/harmonized parquet files (not committed)
 ├── data_final/              forecast outputs (not committed)
-├── notebooks/               Jupyter analysis + documentation
+├── notebooks/               Jupyter notebooks 01–10 (build the forecast in order)
 ├── src/popfc/               installable Python package
 │   ├── paths.py             central path constants
-│   ├── data/                loaders: census, cdc, nysdol, nysdoh, irs, cornell
-│   ├── validate/            cross-source reconciliation
-│   ├── models/              cohort_component.py, statistical.py
-│   ├── constrain/           town-to-county controlling (IPF / pro-rata)
-│   └── viz/                 plots, age pyramids
-└── tests/                   pytest smoke tests
+│   ├── data/                loaders: census, cdc, nysdol, nysdoh, cornell, acs, nchs, download
+│   ├── models/              mortality, fertility, migration, cohort_component, hamilton_perry
+│   ├── constrain/           prorata (town-to-county constraint)
+│   ├── reporting/           export (clean data_final/ artifacts)
+│   └── reconcile.py         population-series reconciliation
+└── tests/                   pytest test suite (130 tests)
 ```
 
 ## One-time setup
@@ -53,15 +57,23 @@ pip install -e .
 # 5. Register a Jupyter kernel for this env
 python -m ipykernel install --user --name popfc --display-name "Python (popfc)"
 
-# 6. Copy raw data from the R project (~277 MB; takes ~30s)
-cp -r popfc_R/data_raw ./data_raw
+# 6. Create the interim/final output directories
+mkdir -p data_raw data_interim data_final
 
-# 7. Create the interim/final output directories
-mkdir -p data_interim data_final
+# 7. Fetch raw data via the download pipeline (some sources need
+#    CENSUS_API_KEY in env; everything else is anonymous-accessible).
+export CENSUS_API_KEY=<your-key>          # for ACS pulls
+python -m popfc.data.download
 
 # 8. Verify the install
 pytest -q
 ```
+
+For sources without an automated download (Census PEP archives,
+NYSDOL CSV exports, NYSDOH population file, CDC Bridged-Race WONDER
+exports, Cornell PAD spreadsheet), you'll need to manually drop the
+upstream files into `data_raw/<source>/` — see
+[docs/workflow.md](docs/workflow.md) for the catalog.
 
 ## Daily workflow
 
@@ -76,11 +88,20 @@ to get the package paths and utilities.
 
 ## Data refresh
 
-Because `data_raw/` is a **copy** of `popfc_R/data_raw/` (not a symlink), if new
-source data is added to the R project you must re-copy:
+The download pipeline (`src/popfc/data/download.py`) registers every
+refreshable upstream source. To refresh everything (skips files already
+cached):
 
 ```bash
-rsync -a --delete popfc_R/data_raw/ data_raw/
+python -m popfc.data.download
+```
+
+To force a re-pull or list what's registered:
+
+```bash
+python -m popfc.data.download --force          # re-fetch everything
+python -m popfc.data.download --list           # show the registry
+python -m popfc.data.download --source NAME    # one file
 ```
 
 ## Development

@@ -1,8 +1,8 @@
 # R project reference materials
 
 This folder preserves the documents, methodology notes, and R source from the
-original `popfc_R/` Quarto project so the Python project remains self-sufficient
-when `popfc_R/` is eventually deleted.
+original R/Quarto project (formerly at `popfc_R/`, deleted in Phase 5) so the
+Python project remains self-sufficient as a reference.
 
 ## Files
 

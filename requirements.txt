@@ -19,6 +19,7 @@ plotly>=5.20
 # Notebooks
 jupyterlab>=4.1
 ipykernel>=6.29
+ipympl>=0.9
 
 # I/O
 requests>=2.31

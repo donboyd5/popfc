@@ -37,7 +37,7 @@ Durable rules for anyone (human or AI) working in this repo. These are not prefe
 1. **Library code in `src/popfc/`, not notebooks.** Notebooks orchestrate and visualize; reusable logic lives in tested modules. Promote anything that's been used twice.
 2. **Vectorized / array-based over per-unit loops** when working with DataFrames or numeric data.
 3. **Every notebook ends with assertions / sanity checks.** Populations sum, no negatives, year coverage complete, identities hold.
-4. **Do not feel constrained by the R implementation.** `popfc_R/` is reference material, not a template. Apply Python best practices even when they depart from the R code. The R project will eventually be deleted.
+4. **Do not feel constrained by the R implementation.** The legacy R/Quarto project (formerly at `popfc_R/`, deleted in Phase 5) is preserved at `docs/r_reference/` for context only — apply Python best practices even when they depart from the R code.
 5. **Default to no comments.** Write a comment only when *why* is non-obvious (a hidden constraint, a workaround for a specific bug, behavior that would surprise a reader). Don't narrate what well-named code already says.
 
 ## Documentation maintenance

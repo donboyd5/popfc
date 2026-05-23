@@ -308,8 +308,8 @@ pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install -e .
 python -m ipykernel install --user --name popfc --display-name "Python (popfc)"
-cp -r popfc_R/data_raw ./data_raw      # initial raw-data copy
-mkdir -p data_interim data_final
+mkdir -p data_raw data_interim data_final
+python -m popfc.data.download          # fetch the automated sources
 pytest -q                              # confirms install
 ```
 

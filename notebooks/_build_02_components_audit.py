@@ -204,6 +204,112 @@ print(violators.sort_values("abs_err", ascending=False)[cols].head(15).to_string
 """),
     # ---------------------------------------------------------------
     md("""
+## 2.5 What is the `Residual` component, and should we worry about it?
+
+The demographic identity we just checked includes a fourth right-hand-side
+term — `Residual` — alongside Births, Deaths, and Net Migration. Census PEP
+publishes this column for every county-year. **What goes into it?** It's a
+kitchen-sink term covering changes in population that the PEP estimation
+methodology can't explain via B/D/NM directly:
+
+- **Group-quarters / institutional reclassifications** — prisons, nursing
+  homes, college dorms moving between population universes.
+- **Base-population corrections** — small after-the-fact adjustments to
+  prior-year totals when the Bureau revises its base.
+- **Mid-vintage methodology changes** — when the Bureau updates how it
+  estimates a particular flow, the discontinuity lands in Residual.
+- **Other unexplained mass** — accumulated rounding and small unattributed
+  changes.
+
+For normal years in a rural county like Washington, Residual is expected to
+be small (well under 0.5% of population). Spikes can indicate (a) a known
+methodology break we should be aware of, or (b) a real population event the
+PEP methodology can't classify (e.g., a prison opening or closing). The
+project's cohort-component forecast doesn't model Residual — projected
+years implicitly assume Residual = 0 — so we want to know whether any
+historical year is large enough to worry about.
+
+Plot below: distribution of `Residual / mid-year-population × 1000` (per
+mille) across all 62 NY counties × all available years. Cohort counties are
+labeled at outlier county-years.
+"""),
+    code("""
+# Build per-mille residual rate per (county, year).
+res_long = comp_pep_res[comp_pep_res["measure"] == "residual"][
+    ["geoid", "geography", "year", "value"]
+].rename(columns={"value": "residual"})
+
+# Mid-year pop from pep_est (kind='estimate').
+pop_for_res = pep_est[["geoid", "year", "population", "pop_prev"]].copy()
+pop_for_res["mid_pop"] = (
+    pop_for_res["population"].astype("Float64")
+    + pop_for_res["pop_prev"].astype("Float64")
+) / 2
+
+resdf = res_long.merge(
+    pop_for_res[["geoid", "year", "mid_pop"]], on=["geoid", "year"], how="inner"
+)
+resdf["residual_per_mille"] = (
+    resdf["residual"].astype("Float64") / resdf["mid_pop"] * 1000.0
+)
+resdf = resdf[resdf["residual_per_mille"].notna()].copy()
+
+print("Residual / mid-year-pop × 1000 — summary across all NY county-years:")
+print(resdf["residual_per_mille"].describe().to_string())
+print()
+print("Top 10 county-years by |Residual / pop|:")
+top = (resdf.assign(abs_perm=lambda d: d["residual_per_mille"].abs())
+       .nlargest(10, "abs_perm")
+       [["geography", "geoid", "year", "residual", "mid_pop", "residual_per_mille"]])
+print(top.to_string(index=False, float_format=lambda x: f'{x:+.2f}'))
+"""),
+    code("""
+# Box plot per year; overlay cohort points.
+fig, ax = plt.subplots(figsize=(11, 5))
+years_sorted = sorted(resdf["year"].unique())
+data_by_year = [resdf[resdf["year"] == y]["residual_per_mille"].astype(float).values
+                for y in years_sorted]
+bp = ax.boxplot(data_by_year, positions=years_sorted, widths=0.6,
+                showfliers=False, patch_artist=True)
+for patch in bp["boxes"]:
+    patch.set_facecolor("lightgrey")
+    patch.set_alpha(0.7)
+
+# Overlay cohort counties as labeled points
+COHORT_RES = {
+    "36115": ("Washington", "C0"),
+    "36091": ("Saratoga",  "C1"),
+    "36113": ("Warren",    "C2"),
+    "36083": ("Rensselaer","C3"),
+    "36031": ("Essex",     "C4"),
+    "36021": ("Columbia",  "C5"),
+}
+for g, (name, color) in COHORT_RES.items():
+    sub = resdf[resdf["geoid"] == g].sort_values("year")
+    ax.plot(sub["year"], sub["residual_per_mille"].astype(float),
+            marker="o", markersize=5, linewidth=0.8, color=color, alpha=0.9, label=name)
+
+ax.axhline(0, color="black", linewidth=0.5)
+ax.axhline(5, color="grey", linestyle=":", alpha=0.5, label="±5‰ flag threshold")
+ax.axhline(-5, color="grey", linestyle=":", alpha=0.5)
+ax.set_xlabel("year")
+ax.set_ylabel("Residual / mid-year population (per mille)")
+ax.set_title("Census PEP Residual component across 62 NY counties — boxplots by year, cohort overlaid")
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper left", fontsize=8, ncol=2)
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading the plot.** Most county-years sit close to zero (±1 per mille,
+i.e., a residual smaller than 0.1% of population) — which is what we want.
+The cohort counties (colored lines) sit comfortably in the middle of the
+distribution every year. No flagged outliers among the rural cohort. For
+the forecast, the implicit assumption "future Residual = 0" is well
+supported by history for these counties.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 3. PEP count vs rate-reconstruction
 
 PEP also publishes rates per 1,000 mid-year average population

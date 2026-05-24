@@ -21,19 +21,20 @@ def test_schema(sya):
 
 
 def test_row_count(sya):
-    # 62 NY counties × 5 YEAR-codes × 86 ages × 2 sex = 53,320
-    assert len(sya) == 62 * 5 * 86 * 2
+    # 62 NY counties × 6 YEAR-codes × 86 ages × 2 sex = 63,984
+    assert len(sya) == 62 * 6 * 86 * 2
 
 
 def test_years_and_kinds(sya):
-    assert set(sya["year"].unique()) == {2020, 2021, 2022, 2023}
+    assert set(sya["year"].unique()) == {2020, 2021, 2022, 2023, 2024}
     assert set(sya["kind"].unique()) == {"census", "estimate"}
-    # 2020 has both kinds; 2021-2023 have estimate only.
+    # 2020 has both kinds; 2021-2024 have estimate only.
     yk = sya.groupby("year")["kind"].unique().apply(lambda a: set(a)).to_dict()
     assert yk[2020] == {"census", "estimate"}
     assert yk[2021] == {"estimate"}
     assert yk[2022] == {"estimate"}
     assert yk[2023] == {"estimate"}
+    assert yk[2024] == {"estimate"}
 
 
 def test_age_range(sya):
@@ -45,15 +46,17 @@ def test_age_range(sya):
 
 
 def test_washington_totals_match_pep(sya):
-    """Verify YEAR-code mapping by checking Washington against expected PEP totals."""
+    """Verify YEAR-code mapping by checking Washington against expected PEP V2024 totals."""
     wash = sya[sya["geoid"] == "36115"].groupby(["year", "kind"])["population"].sum()
-    # Values verified against NYSDOL's nysdol_2025-04-20 series, which mirrors PEP.
+    # Values verified against PEP V2024 (co-est2024-alldata.csv) for Washington Co:
+    # ESTIMATESBASE2020=61302, POPESTIMATE2020-2024 = 61106, 60871, 60764, 60032, 59839.
     expected = {
-        (2020, "census"):   61297,
-        (2020, "estimate"): 61091,
-        (2021, "estimate"): 60858,
-        (2022, "estimate"): 60810,
-        (2023, "estimate"): 60047,
+        (2020, "census"):   61302,
+        (2020, "estimate"): 61106,
+        (2021, "estimate"): 60871,
+        (2022, "estimate"): 60764,
+        (2023, "estimate"): 60032,
+        (2024, "estimate"): 59839,
     }
     for k, v in expected.items():
         assert int(wash.loc[k]) == v, f"mismatch at {k}: got {int(wash.loc[k])}, expected {v}"

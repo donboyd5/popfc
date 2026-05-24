@@ -26,13 +26,13 @@ CELLS = [
 
 **Goal.** Build a continuous single-year-of-age × sex population series for
 Washington County (and statewide for all 62 NY counties at the level of
-detail Census provides), spanning **1990 to 2023**, by stitching two
+detail Census provides), spanning **1990 to 2024**, by stitching two
 methodologically distinct sources:
 
 | Source       | Years     | Geography      | Methodology |
 |--------------|-----------|----------------|-------------|
 | CDC Bridged-Race | 1990–2020 | Washington only | NCHS bridged-race intercensal/postcensal estimates of July-1 resident population |
-| Census SYA       | 2020–2023 | All 62 NY counties | Census PEP unbridged 4/1/2020 enumeration + July-1 estimates |
+| Census SYA       | 2020–2024 | All 62 NY counties | Census PEP unbridged 4/1/2020 enumeration + July-1 estimates |
 
 These do not agree at 2020 by construction (different race-bridging,
 different population universe). This notebook quantifies the seam and
@@ -41,7 +41,7 @@ use as the base year.
 
 ## Output
 
-- `data_interim/county_agesex_1990_2023.parquet` — long-format
+- `data_interim/county_agesex_1990_2024.parquet` — long-format
   AGESEX_LONG_COLUMNS frame, both sources stacked with provenance
   (`source` column distinguishes `cdc_bridged` vs `census_sya`).
 """),
@@ -170,7 +170,7 @@ plt.show()
     md("""
 ## 3. Time series of total population at the seam
 
-Show CDC 1990–2020 alongside Census SYA 2020–2023 for Washington. The
+Show CDC 1990–2020 alongside Census SYA 2020–2024 for Washington. The
 2020 step indicates the methodology break.
 """),
     code("""
@@ -194,7 +194,7 @@ ax.scatter(sya_yearly_cen.index, sya_yearly_cen.values,
            marker="D", s=40, color="C3", zorder=5,
            label="Census SYA (4/1/2020 Census)")
 ax.axvline(2020, color="grey", linewidth=0.8, alpha=0.5)
-ax.set_title("Washington County — total population by source, 1990–2023")
+ax.set_title("Washington County — total population by source, 1990–2024")
 ax.set_xlabel("year")
 ax.set_ylabel("population")
 ax.grid(True, alpha=0.3)
@@ -210,15 +210,15 @@ print(f"  Census SYA 7/1/2020:    {int(sya_yearly_est.loc[2020]):,}")
 """),
     # ---------------------------------------------------------------
     md("""
-## 4. Build the stitched 1990–2023 age/sex frame
+## 4. Build the stitched 1990–2024 age/sex frame
 
-Concatenate CDC (1990–2019) with Census SYA (2020–2023). For the 2020
+Concatenate CDC (1990–2019) with Census SYA (2020–2024). For the 2020
 seam year we have a choice:
 
 - Use **CDC bridged** (consistent with 1990–2019 methodology).
 - Use **Census SYA 4/1/2020 Census** (decennial enumeration, the ground
   truth April-1 anchor).
-- Use **Census SYA 7/1/2020 estimate** (consistent with 2021–2023
+- Use **Census SYA 7/1/2020 estimate** (consistent with 2021–2024
   methodology).
 
 We keep **all three** by carrying source/kind provenance, and leave the
@@ -232,7 +232,7 @@ choice to whoever consumes the frame for a specific use:
 """),
     code("""
 # CDC contributes 1990-2020 (we keep the 2020 row for comparison; consumer filters).
-# SYA contributes 2020-2023 (both kinds).
+# SYA contributes 2020-2024 (both kinds).
 stitched = pd.concat([cdc_agesex, sya], ignore_index=True)
 print(f"stitched rows: {len(stitched):,}")
 print(f"source × kind × year coverage:")
@@ -275,7 +275,7 @@ qa_agesex(stitched)
 """),
     code("""
 DATA_INTERIM.mkdir(parents=True, exist_ok=True)
-out_path = DATA_INTERIM / "county_agesex_1990_2023.parquet"
+out_path = DATA_INTERIM / "county_agesex_1990_2024.parquet"
 stitched.to_parquet(out_path, index=False)
 print(f"wrote {out_path}  ({len(stitched):,} rows)")
 """),

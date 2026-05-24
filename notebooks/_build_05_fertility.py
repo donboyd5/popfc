@@ -174,17 +174,17 @@ rate-based annual births fixes this without losing the year.
     md("""
 ## 3. Female population by single year of age
 
-From `data_interim/county_agesex_1990_2023.parquet`. Two sources stitched
+From `data_interim/county_agesex_1990_2024.parquet`. Two sources stitched
 together:
 
 - **CDC bridged-race** (Washington only, 1990-2020, single-year ages)
-- **Census SYA** (all 62 NY counties, 2020-2023, single-year ages)
+- **Census SYA** (all 62 NY counties, 2020-2024, single-year ages)
 
 We use Census SYA for all year ≥ 2020 (consistent statewide), and CDC
 bridged for Washington's pre-2020 history.
 """),
     code("""
-agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2023.parquet")
+agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2024.parquet")
 # Take Census SYA `kind=='estimate'` for 2020+ (annual July-1 estimates),
 # and CDC bridged for pre-2020 Washington.
 sya_est = agesex[(agesex["source"] == "census_sya") & (agesex["kind"] == "estimate")]

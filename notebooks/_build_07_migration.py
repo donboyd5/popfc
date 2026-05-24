@@ -91,8 +91,8 @@ TOP_CODE_AGE = 85
 ## 1. Load population data and rebanded survival rates
 """),
     code("""
-agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2023.parquet")
-# Census SYA July-1 estimates (all 62 NY counties, 2020-2023).
+agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2024.parquet")
+# Census SYA July-1 estimates (all 62 NY counties, 2020-2024).
 pop = agesex[
     (agesex["source"] == "census_sya")
     & (agesex["kind"] == "estimate")

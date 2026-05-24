@@ -109,7 +109,7 @@ print(f"CDC totals:     {len(pop_cdc):>7,} rows (Washington only)")
 """),
     # ---------------------------------------------------------------
     md("""
-## 2. Demographic identity check (Census PEP, 2011–2024)
+## 2. Demographic identity check (Census PEP, 2011–2025)
 
 Compute ΔPop = Births − Deaths + NetMig + Residual for every county-year
 where PEP publishes all four components. Flag any non-zero closure
@@ -123,7 +123,7 @@ population to compute the LHS, then compare to the components RHS.
 """),
     code("""
 # Resolve PEP vintage overlap so we have one population row per (geoid, year, kind).
-_VINTAGE_RANK = {"v2010int": 0, "v2020": 1, "v2024": 2}
+_VINTAGE_RANK = {"v2010int": 0, "v2020": 1, "v2024": 2, "v2025": 3}
 
 def resolve_pep_vintage(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -466,7 +466,7 @@ qa_components(comp_pep_res)
   a GitHub issue. Independent counts will let us replace the self-check
   here with a true cross-source comparison.
 - **Notebook 03 — age/sex audit**: CDC Bridged-Race 1990–2020 vs Census
-  SYA 2020–2023; assess continuity across the 2020 seam.
+  SYA 2020–2024; assess continuity across the 2020 seam.
 - **Promote** `resolve_pep_vintage` and the identity-check helpers into
   `src/popfc/reconcile.py` so notebooks 01 and 02 share one source of
   truth.

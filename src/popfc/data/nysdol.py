@@ -86,8 +86,13 @@ def load_nysdol_annual(
     # explicitly at the conversion step below, rather than letting pandas
     # silently decide column dtypes.
     raw = read_csv_strings(path)
-    # Normalize columns defensively (future vintages may shift capitalization).
-    raw.columns = [c.strip().lower() for c in raw.columns]
+    # Normalize columns defensively. Future vintages may shift capitalization
+    # or use spaces instead of underscores — the data.ny.gov direct CSV uses
+    # "FIPS Code" / "Program Type", while the older curated CSV used
+    # "fips_code" / "program_type".
+    raw.columns = [
+        c.strip().lower().replace(" ", "_") for c in raw.columns
+    ]
 
     # Coerce fips_code and year to numeric explicitly so non-integer sentinel
     # values would surface as warnings.

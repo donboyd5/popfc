@@ -35,7 +35,7 @@ All produced by earlier Phase-3 notebooks:
 | `data_interim/survival_rates.parquet`        | 06 |
 | `data_interim/asfr.parquet`                  | 05 |
 | `data_interim/net_migration_rates.parquet`   | 07 |
-| `data_interim/county_agesex_1990_2023.parquet` (base) | 03 |
+| `data_interim/county_agesex_1990_2024.parquet` (base) | 03 |
 | `data_raw/cornell/padprojections115.xls` (benchmark) | Cornell |
 
 Survival is NCHS NY State 2022 (rebanded to top-code 85). ASFR is the
@@ -113,7 +113,7 @@ print(f"asfr rows: {len(asfr_all):,}; latest year: {asfr_all['year'].max()}")
 net_mig = pd.read_parquet(DATA_INTERIM / "net_migration_rates.parquet")
 print(f"net migration rows: {len(net_mig):,}")
 
-agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2023.parquet")
+agesex = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2024.parquet")
 base_all = agesex[
     (agesex["source"] == "census_sya")
     & (agesex["kind"] == "estimate")

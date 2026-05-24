@@ -27,6 +27,7 @@ DEFAULT_PEP_VINTAGE_RANK: Mapping[str, int] = {
     "v2010int": 0,
     "v2020": 1,
     "v2024": 2,
+    "v2025": 3,
 }
 
 

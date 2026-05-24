@@ -39,8 +39,8 @@ clear provenance.
 |---|---|---|---|
 | Census PEP 2000–2010 intercensal | 2000–2010 | NY counties | totals only |
 | Census PEP 2010–2020 intercensal | 2010–2020 | NY counties | totals + components + rates |
-| Census PEP 2020+ postcensal | 2020–2024 | NY counties | totals + components + rates |
-| NYSDOL annual estimates | 1970–2023 | NY + counties | totals only |
+| Census PEP 2020+ postcensal | 2020–2025 | NY counties | totals + components + rates |
+| NYSDOL annual estimates | 1970–2025 | NY + counties | totals only |
 
 ## Reconciliation rules
 
@@ -365,8 +365,8 @@ ax.plot(wash_recon["year"], wash_recon["population"],
 ax.plot(wash_pad["year"], wash_pad["population"],
         marker="s", markersize=3, linewidth=1.2, linestyle="--",
         label=f"Cornell PAD ({wash_pad['vintage'].iloc[0]})")
-ax.axvline(2024.5, color="grey", linewidth=0.8, alpha=0.5)
-ax.text(2024.7, ax.get_ylim()[1], "→ projection horizon",
+ax.axvline(2025.5, color="grey", linewidth=0.8, alpha=0.5)
+ax.text(2025.7, ax.get_ylim()[1], "→ projection horizon",
         va="top", ha="left", fontsize=9, color="grey")
 ax.set_title("Washington County (36115): history vs Cornell PAD projection")
 ax.set_xlabel("year")
@@ -376,7 +376,7 @@ ax.legend()
 fig.tight_layout()
 plt.show()
 
-# Side-by-side table for the overlap window 2015–2024.
+# Side-by-side table for the overlap window 2015–2025.
 overlap = pd.merge(
     wash_recon[["year", "population"]].rename(columns={"population": "reconciled"}),
     wash_pad[["year", "population"]].rename(columns={"population": "cornell_pad"}),
@@ -398,7 +398,7 @@ print(overlap.to_string(index=False, float_format=lambda x: f'{x:,.2f}'))
 - **NYSDOH vital statistics (births/deaths)** — deferred to a follow-on
   API pull (see GitHub issue).
 - **Notebook 03 — age/sex audit** (CDC Bridged-Race 1990–2020 vs Census
-  SYA 2020–2023, continuity across the 2020 seam).
+  SYA 2020–2024, continuity across the 2020 seam).
 - **Investigate the decennial seam residual** per county — how big is the
   implied mismatch between intercensal smoothing and component sums?
 - **Reconciliation logic** promoted to `src/popfc/reconcile.py` — done.

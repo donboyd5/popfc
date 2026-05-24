@@ -22,7 +22,7 @@ CELLS = [
 # 05 — Fertility (Phase 3 prep)
 
 **Goal.** Produce age-specific fertility rates (ASFR) per county-year for
-all 62 NY counties (2021-2023) plus Washington 2011-2019 — i.e., every
+all 62 NY counties (2020-2024) plus Washington 2011-2019 — i.e., every
 year for which we have both a fully-observed birth count and a single-
 year-of-age female-population frame.
 
@@ -260,7 +260,7 @@ ax.axhline(NCHS_ASFR_2023_TFR, color="grey", linestyle="--",
 ax.axhline(2.1, color="C3", linestyle=":", alpha=0.6, label="replacement (2.1)")
 ax.set_xlabel("year")
 ax.set_ylabel("TFR (implied from scaling)")
-ax.set_title(f"Washington TFR with cohort overlay — Washington 2011-2023, others 2020-2023")
+ax.set_title(f"Washington TFR with cohort overlay — Washington 2011-{int(wash_tfr['year'].max())}, others {int(cohort_tfr['year'].min())}-{int(cohort_tfr['year'].max())}")
 ax.grid(True, alpha=0.3)
 ax.legend(loc="lower left", fontsize=8, ncol=2)
 fig.tight_layout()
@@ -319,7 +319,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 6. Cohort comparison — 2023 TFR distribution across NY counties
+## 6. Cohort comparison — latest-year TFR distribution across NY counties
 """),
     code("""
 y_latest = int(asfr["year"].max())

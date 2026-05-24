@@ -41,7 +41,7 @@ rebanded to top-code 85 (matching Census SYA / CDC top-code). Applied
 uniformly to all NY counties (no county-specific mortality refinement
 in v1; that's Phase-4 USALEEP territory if needed).
 
-Year-pairs available: 2020-21, 2021-22, 2022-23 (3 pairs from
+Year-pairs available: 2020-21, 2021-22, 2022-23, 2023-24 (4 pairs from
 Census SYA). Rates are averaged across the three pairs to reduce noise.
 
 ## Caveat

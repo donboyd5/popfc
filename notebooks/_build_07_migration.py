@@ -131,9 +131,46 @@ print("year_basis sample:", m["year_basis"].iloc[0])
     md("""
 ## 3. Washington — migration profile by age, by sex
 
+### How we compute these rates (recap)
+
+We don't observe migration directly — we infer it as the **residual**
+between observed population change and expected survival. For each
+(county, sex, single year of age, year-pair t → t+1):
+
+1. Census SYA gives us `P(x, t)` — the July 1 population at age x in
+   year t.
+2. The NCHS NY State 2022 single-year period life table gives us
+   `S(x)` — the probability that a person aged x survives one year to
+   age x+1. We apply the same life table to all 62 NY counties; the
+   project deliberately doesn't refine mortality by county. So any
+   county-level difference between observed and expected population
+   shows up here as migration, not as a county-specific mortality
+   effect.
+3. The expected age-(x+1) population at t+1 if nobody moved is just
+   `P(x, t) × S(x)`.
+4. Census SYA also gives us the *actually observed* age-(x+1)
+   population at t+1: `P_obs(x+1, t+1)`.
+
+We take the difference and call it net migration:
+
+> **M(x+1, t+1) = P_obs(x+1, t+1) − P(x, t) × S(x)**
+
+We then convert to a rate per source-age person:
+
+> **m(x → x+1) = M(x+1, t+1) / P(x, t)**
+
+Positive values mean net in-migration into age x+1 from outside the
+county; negative values mean net out-migration. Census SYA gives us
+three year-pairs (2020→21, 2021→22, 2022→23); we average rates across
+the three pairs to reduce noise. The averaged rate is what the
+cohort-component engine in notebook 08 applies year by year.
+
+### Reading the plot
+
 Net migration rates by single year of age are noisy at the county
-level. Plot raw rates and a centered 5-year rolling mean for
-readability.
+level, especially in small rural counties where a few movers can shift
+the rate visibly. Below we plot raw rates and a centered 5-year
+rolling mean for readability.
 """),
     code("""
 def plot_county(m: pd.DataFrame, geoid: str, name: str):

@@ -50,13 +50,20 @@ raw data lives in `data_raw/` (fetched via the download pipeline).
 
 ---
 
-## Current Status (as of 2026-05-22, Phase 2 started)
+## Current Status (as of 2026-05-24, Phases 1–5 complete + July 1 anchor refinement on `feat/july1-decennial-anchor`)
 
-### Phase 1 — COMPLETE
+### Phase 1 — COMPLETE (with one post-merge refinement in progress)
 
 Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data source on disk (Census PEP 3 vintages, Census SYA, CDC Bridged-Race, NYSDOL, NYSDOH, Cornell PAD), the `popfc.reconcile` module, Notebooks 01–03, and interim parquet outputs `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. 26 tests passed at merge time.
 
-Open Phase-1 follow-ons (deferred, do not block Phase 2): GitHub issues #2 (NYSDOH vital-stats API pulls) and #5 (extend reconciled series back to 1970).
+**Post-merge refinement (in progress, branch `feat/july1-decennial-anchor`, 2026-05-24):** The reconciled series now anchors **every year on a July 1 estimate**, including the decennial years 2000/2010/2020. Previously the rule used the April 1 decennial enumeration at those three years, which created a ~3-month phase shift relative to the otherwise July 1 series and distorted year-over-year trend visualizations. New rule:
+
+- **2000–2019**: NYSDOL July 1 intercensal estimate (continuous across the 2000 and 2010 decennials).
+- **2020+**: Census PEP July 1 postcensal estimate, latest vintage (covers the 2020 decennial as the base of the postcensal series).
+
+The April 1 decennial enumerations are still loaded into `population_all_sources.parquet` for QA but are not used in `population_reconciled.parquet`. Visual check at `notebooks/figures/decennial_seam_check_new_rule.png` confirms the new July 1 line passes smoothly through what used to be April 1 anchor points (most visible: Saratoga 2000, where the former anchor sat ~900 persons below the trend).
+
+Open Phase-1 follow-ons (deferred): GitHub issues #2 (NYSDOH vital-stats API pulls), #5 (extend reconciled series back to 1970), and #6 (control single-year age × sex frame to reconciled totals — three-layer raw / audit / controlled design).
 
 ### Phase 5 — IN PROGRESS on `feat/phase-5-reporting` (not yet merged)
 
@@ -373,6 +380,12 @@ Copy-paste into a new session to continue:
 > **Status: Phases 1-5 are COMPLETE and merged to main (commit `4af5a61`).**
 > The full pipeline (Notebooks 01-10) produces a working forecast end-to-end.
 > 130 tests pass.
+>
+> **Post-Phase-5 refinement in progress on `feat/july1-decennial-anchor`** (2026-05-24): the
+> reconciled population series now uses July 1 estimates for every year, including
+> the decennial years 2000/2010/2020 (previously used the April 1 enumeration there).
+> See `docs/planning.md` "Current Status" for the new rule. If not yet merged when
+> you read this, check the branch state before assuming the rule.
 >
 > Start by reading, in order:
 > 1. `CLAUDE.md`            — project rules (git workflow, data conventions)

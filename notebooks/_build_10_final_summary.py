@@ -234,6 +234,92 @@ print("(Approximation: deaths use the 2023 rate × population each year. "
 """),
     # ---------------------------------------------------------------
     md("""
+### Historical migration composition — domestic vs international
+
+The cohort-component engine doesn't separately model domestic and
+international migration; it applies a single net migration rate per
+age × sex × county derived from the 3-year-average residual method.
+But Census PEP publishes the two flows separately in its historical
+components data, and the recent split is informative.
+
+Below: Washington County's annual net migration history broken into the
+two components. The stacked bars show domestic (typically negative, i.e.,
+out-migration to other US counties) and international (typically small
+and positive). Net migration = the sum.
+
+Caveat about gross flows: PEP publishes only NET domestic migration
+(arrivals minus departures, combined). Separating it into gross in vs
+gross out requires IRS county-to-county migration data — a separate
+loader build that's tracked as a follow-up issue.
+"""),
+    code("""
+wash_hist_mig = (
+    comp[(comp["geoid"] == WASHINGTON)
+         & comp["measure"].isin(["domestic_mig", "international_mig", "net_mig"])]
+    .pivot_table(index="year", columns="measure", values="value", aggfunc="first")
+    .sort_index()
+)
+print("Washington historical migration components:")
+print(wash_hist_mig.round(0).astype("Int64").to_string())
+print()
+
+# Recent shift summary
+recent = wash_hist_mig.loc[wash_hist_mig.index >= 2020].copy()
+print(f"Recent years (2020+):")
+print(f"  Mean domestic_mig:       {recent['domestic_mig'].mean():+.0f}/yr")
+print(f"  Mean international_mig:  {recent['international_mig'].mean():+.0f}/yr")
+print(f"  Mean net_mig:            {recent['net_mig'].mean():+.0f}/yr")
+print()
+older = wash_hist_mig.loc[(wash_hist_mig.index >= 2011) & (wash_hist_mig.index < 2020)].copy()
+print(f"Earlier (2011-2019, pre-pandemic):")
+print(f"  Mean domestic_mig:       {older['domestic_mig'].mean():+.0f}/yr")
+print(f"  Mean international_mig:  {older['international_mig'].mean():+.0f}/yr")
+print(f"  Mean net_mig:            {older['net_mig'].mean():+.0f}/yr")
+"""),
+    code("""
+fig, ax = plt.subplots(figsize=(12, 5))
+years = wash_hist_mig.index.astype(int).to_numpy()
+dom = wash_hist_mig["domestic_mig"].astype(float).to_numpy()
+intl = wash_hist_mig["international_mig"].astype(float).to_numpy()
+net = wash_hist_mig["net_mig"].astype(float).to_numpy()
+
+# Plot each component as a separate bar series (not stacked) so positive
+# domestic and positive international don't visually mask negative-vs-positive
+# patterns.
+width = 0.4
+ax.bar(years - width/2, dom, width=width, color="C0", alpha=0.85,
+       label="Domestic net migration", edgecolor="black", linewidth=0.3)
+ax.bar(years + width/2, intl, width=width, color="C1", alpha=0.85,
+       label="International net migration", edgecolor="black", linewidth=0.3)
+ax.plot(years, net, color="black", linewidth=1.6, marker="o", markersize=4,
+        label="Net migration (sum)", zorder=5)
+ax.axhline(0, color="black", linewidth=0.6)
+ax.set_xlabel("year")
+ax.set_ylabel("persons per year")
+ax.set_title("Washington County — annual net migration by component (Census PEP)")
+ax.grid(True, alpha=0.3, axis="y")
+ax.legend(loc="upper left", fontsize=9)
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**What the plot shows.** Washington's net migration has been dominated
+by domestic outflows for most of the 2011–2024 period, with international
+flows contributing small positive amounts. **2022–2024 mark a notable
+shift**: international net migration ramped from its long-run level
+of ~+10–20/yr to **+146 in 2023 and +175 in 2024**, partly offsetting
+the domestic outflow. 2024 in particular shows the components roughly
+canceling — domestic −161, international +175, net +14, essentially
+flat after years of population loss via migration.
+
+This international uptick is consistent with the national post-COVID
+immigration rebound and is worth tracking in future updates. The
+forecast engine bakes in a single net migration rate per age × sex
+based on 2020–2023 residuals, so the projection averages over these
+flows rather than projecting either component separately.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 4. Age structure — Washington 2023 vs 2050
 """),
     code("""

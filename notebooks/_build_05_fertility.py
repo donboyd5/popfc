@@ -218,6 +218,15 @@ print(cov.to_string())
 ## 5. Diagnostic — Washington historical TFR
 """),
     code("""
+COHORT_TFR = {
+    "36115": "Washington",
+    "36091": "Saratoga",
+    "36113": "Warren",
+    "36083": "Rensselaer",
+    "36031": "Essex",
+    "36021": "Columbia",
+}
+
 wash_tfr = (
     asfr[asfr["geoid"] == WASHINGTON]
     .groupby("year").agg(
@@ -229,15 +238,82 @@ wash_tfr = (
 print("Washington TFR by year (scaled from 2023 US ALL):")
 print(wash_tfr.to_string(index=False, float_format=lambda x: f'{x:.4f}'))
 
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(wash_tfr["year"], wash_tfr["tfr"], marker="o", linewidth=1.4)
-ax.axhline(NCHS_ASFR_2023_TFR, color="grey", linestyle="--", label=f"US 2023 TFR = {NCHS_ASFR_2023_TFR}")
+cohort_tfr = (
+    asfr[asfr["geoid"].isin(COHORT_TFR)]
+    .groupby(["geoid", "year"]).agg(tfr=("implied_tfr", "first")).reset_index()
+)
+cohort_tfr["county"] = cohort_tfr["geoid"].map(COHORT_TFR)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+# Cohort overlay lines (the 5 neighbors) — thin & light for context.
+for g, name in COHORT_TFR.items():
+    if g == WASHINGTON:
+        continue
+    sub = cohort_tfr[cohort_tfr["geoid"] == g].sort_values("year")
+    ax.plot(sub["year"], sub["tfr"], marker="o", markersize=3,
+            linewidth=0.9, alpha=0.55, label=name)
+# Washington as the highlighted line.
+ax.plot(wash_tfr["year"], wash_tfr["tfr"], marker="o", linewidth=2.0,
+        color="C0", label="Washington")
+ax.axhline(NCHS_ASFR_2023_TFR, color="grey", linestyle="--",
+           label=f"US 2023 TFR = {NCHS_ASFR_2023_TFR}")
 ax.axhline(2.1, color="C3", linestyle=":", alpha=0.6, label="replacement (2.1)")
 ax.set_xlabel("year")
 ax.set_ylabel("TFR (implied from scaling)")
-ax.set_title(f"Washington County TFR — {wash_tfr['year'].min()} to {wash_tfr['year'].max()}")
+ax.set_title(f"Washington TFR with cohort overlay — Washington 2011-2023, others 2020-2023")
 ax.grid(True, alpha=0.3)
-ax.legend()
+ax.legend(loc="lower left", fontsize=8, ncol=2)
+fig.tight_layout()
+plt.show()
+"""),
+    # ---------------------------------------------------------------
+    md("""
+### Is the 2022 Washington TFR bump real?
+
+Washington's TFR jumped from 1.577 (2021) to 1.693 (2022) — a +7%
+year-over-year increase. The national 2022 TFR actually *declined* about
+1% from 2021 (CDC NCHS Data Brief #477), so this isn't a national
+fertility-rebound story. Before reading anything demographic into it, we
+should check whether the underlying *raw birth count* movement is within
+year-to-year noise for a county of Washington's size.
+
+For a Poisson process with mean μ, the standard deviation is √μ. Annual
+births in Washington average ~575, so √575 ≈ 24. A ±2σ noise band
+around the historical mean is roughly **±48 births**. The 2022–2021
+delta is 557 − 522 = **+35 births**, which sits comfortably inside the
+expected noise band.
+
+Conclusion: the 2022 bump is consistent with normal year-to-year
+variability in a small-county birth count, not a demographic event. The
+plot below makes this explicit.
+"""),
+    code("""
+fig, ax = plt.subplots(figsize=(10, 4))
+years = wash_tfr["year"].to_numpy()
+births = wash_tfr["births"].astype(float).to_numpy()
+mean_births = float(births.mean())
+sigma = float(mean_births ** 0.5)  # Poisson sigma ≈ sqrt(mean)
+
+ax.bar(years, births, color="C0", alpha=0.75, edgecolor="black",
+       label="Washington annual births")
+ax.axhline(mean_births, color="black", linestyle="--", linewidth=1.0,
+           label=f"mean = {mean_births:.0f}")
+ax.fill_between([years.min() - 0.5, years.max() + 0.5],
+                mean_births - 2 * sigma, mean_births + 2 * sigma,
+                color="grey", alpha=0.2,
+                label=f"±2σ Poisson band (≈ ±{2*sigma:.0f} births)")
+# Annotate 2022 explicitly.
+y2022 = int(wash_tfr[wash_tfr["year"] == 2022]["births"].iloc[0])
+ax.annotate(f"2022: {y2022} births\\n(+35 vs 2021,\\ninside noise band)",
+            xy=(2022, y2022), xytext=(2017, mean_births + 2 * sigma + 5),
+            fontsize=9, ha="center",
+            arrowprops=dict(arrowstyle="->", color="black", lw=0.8))
+ax.set_xlim(years.min() - 0.5, years.max() + 0.5)
+ax.set_xlabel("year")
+ax.set_ylabel("Washington annual births")
+ax.set_title("Washington raw birth counts with Poisson noise band — 2022 'spike' is within expected variability")
+ax.grid(True, alpha=0.3, axis="y")
+ax.legend(loc="lower right", fontsize=8)
 fig.tight_layout()
 plt.show()
 """),

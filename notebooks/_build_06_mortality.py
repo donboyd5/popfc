@@ -60,6 +60,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from popfc.data.nchs import load_usaleep_life_expectancy
 from popfc.models.mortality import (
     SURVIVAL_RATES_COLUMNS,
     reconstruct_Lx_from_closed_survival,
@@ -73,6 +74,15 @@ pd.set_option("display.max_columns", 40)
 WASHINGTON = FULL_FIPS  # '36115'
 NY_STATE = "36000"
 US = "US"
+
+COHORT_MORT = {
+    WASHINGTON: "Washington",
+    "36091": "Saratoga",
+    "36113": "Warren",
+    "36083": "Rensselaer",
+    "36031": "Essex",
+    "36021": "Columbia",
+}
 """),
     # ---------------------------------------------------------------
     md("""
@@ -233,7 +243,141 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 6. Save survival rates
+## 6. Where does Washington stack up vs other NY counties? — USALEEP-aggregated e(0)
+
+The forecast applies NY State 2022 mortality uniformly to every NY county
+(this is a deliberate project choice — small-county life tables aren't
+reliable). But it's still useful to ask, descriptively, whether Washington
+sits at the high, low, or middle of the NY mortality distribution. We use
+USALEEP File A (life expectancy at birth by Census tract, 2010–2015) for
+all NY tracts and aggregate to county by taking the **simple mean of
+tract e(0)** within each county.
+
+Caveats: (a) USALEEP's vintage (2010–2015) is older than the rest of our
+mortality data (NY State 2022); cross-time comparisons aren't valid. We
+read these as *relative* standing, not absolute levels. (b) Simple mean of
+tract e(0) over-weights small-population tracts. Population-weighted means
+would be more rigorous; we lack tract population in the current data load,
+so we disclose and stick with the simple mean.
+"""),
+    code("""
+usaleep_ny = load_usaleep_life_expectancy()
+usaleep_ny["county_geoid"] = usaleep_ny["geoid"].astype(str).str[:5]
+
+county_e0 = (
+    usaleep_ny.groupby("county_geoid")["ex"]
+    .agg(["mean", "median", "count"])
+    .rename(columns={"mean": "ex_mean", "median": "ex_median", "count": "n_tracts"})
+    .reset_index()
+    .rename(columns={"county_geoid": "geoid"})
+)
+
+# Attach county names from county_components (one row per county-year).
+comp = pd.read_parquet(DATA_INTERIM / "county_components.parquet")
+name_lookup = (comp.drop_duplicates("geoid")[["geoid", "geography"]]
+               .rename(columns={"geography": "county"}))
+county_e0 = county_e0.merge(name_lookup, on="geoid", how="left")
+county_e0 = county_e0.sort_values("ex_mean").reset_index(drop=True)
+
+print("USALEEP county-level e(0) — full NY ranking (low to high):")
+print(county_e0[["geoid", "county", "n_tracts", "ex_mean", "ex_median"]]
+      .to_string(index=False, float_format=lambda x: f'{x:.2f}'))
+print()
+print(f"Distribution: median = {county_e0['ex_mean'].median():.2f}, "
+      f"min = {county_e0['ex_mean'].min():.2f}, "
+      f"max = {county_e0['ex_mean'].max():.2f}")
+"""),
+    code("""
+fig, ax = plt.subplots(figsize=(8, 14))
+y_positions = range(len(county_e0))
+bar_colors = ["lightgrey"] * len(county_e0)
+labels_to_show = []
+for i, row in county_e0.iterrows():
+    g = row["geoid"]
+    if g in COHORT_MORT:
+        # Distinct color for cohort counties; Washington gets the highlight color.
+        bar_colors[i] = "C0" if g == WASHINGTON else "C1"
+        labels_to_show.append((i, row["county"], row["ex_mean"]))
+
+ax.barh(list(y_positions), county_e0["ex_mean"].astype(float).tolist(),
+        color=bar_colors, edgecolor="black", linewidth=0.3)
+ax.set_yticks(list(y_positions))
+ax.set_yticklabels(county_e0["county"].tolist(), fontsize=7)
+ax.axvline(county_e0["ex_mean"].median(), color="black", linestyle="--",
+           linewidth=0.8, label=f"NY median = {county_e0['ex_mean'].median():.1f}")
+ax.set_xlabel("USALEEP-aggregated county e(0) — simple mean of tract values, 2010-2015 (years)")
+ax.set_title("NY counties ranked by life expectancy at birth — Washington (blue) and cohort (orange)")
+ax.grid(True, alpha=0.3, axis="x")
+ax.legend(loc="lower right", fontsize=8)
+ax.set_xlim(left=county_e0["ex_mean"].min() - 1)
+fig.tight_layout()
+plt.show()
+
+# Tabular relative-standing summary for the cohort.
+sub = county_e0[county_e0["geoid"].isin(COHORT_MORT)].copy()
+sub["ny_rank"] = county_e0["ex_mean"].rank(ascending=True).astype(int).reindex(sub.index)
+sub["ny_percentile"] = (sub["ny_rank"] / len(county_e0) * 100).round(0).astype(int)
+print()
+print("Cohort relative standing (1 = lowest e(0), 62 = highest):")
+print(sub[["county", "geoid", "ex_mean", "ny_rank", "ny_percentile"]]
+      .sort_values("ny_rank")
+      .to_string(index=False, float_format=lambda x: f'{x:.2f}'))
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 7. Recent mortality trend — Census PEP crude death rate
+
+USALEEP is dated 2010–2015. For a more current view of relative mortality
+we use Census PEP's published `RDEATH` (crude death rate per 1,000 mid-year
+population) for 2011–2024. **Important caveat:** crude death rate is *not*
+age-adjusted, so an older county will show a higher crude rate even if its
+age-specific mortality risk is identical. Compare cohort lines in light of
+each county's known age structure (e.g., Saratoga has a younger profile
+than the rural northern counties).
+
+A demographically clean age-adjusted SMR — observed deaths vs expected
+deaths under the NY State 2022 life table — is a worthwhile follow-up but
+requires combining the age × sex frame with survival rates; it's deferred
+to its own analysis pass.
+"""),
+    code("""
+rate_deaths = comp[comp["measure"] == "rate_deaths"][
+    ["geoid", "geography", "year", "value"]
+].rename(columns={"value": "rate_deaths"})
+rate_deaths["rate_deaths"] = rate_deaths["rate_deaths"].astype(float)
+
+# NY state average (population-weighted) for each year using county_components 'deaths' and pop.
+# Simpler: just average the rate across NY counties as a context line.
+state_avg = (rate_deaths.groupby("year")["rate_deaths"].mean()
+             .rename("ny_county_mean").reset_index())
+
+fig, ax = plt.subplots(figsize=(11, 5))
+for g, name in COHORT_MORT.items():
+    sub = rate_deaths[rate_deaths["geoid"] == g].sort_values("year")
+    lw = 2.0 if g == WASHINGTON else 0.9
+    alpha = 1.0 if g == WASHINGTON else 0.6
+    ax.plot(sub["year"], sub["rate_deaths"], marker="o", markersize=3,
+            linewidth=lw, alpha=alpha, label=name)
+ax.plot(state_avg["year"], state_avg["ny_county_mean"], color="black",
+        linestyle="--", linewidth=1.0, alpha=0.7, label="NY 62-county mean")
+ax.set_xlabel("year")
+ax.set_ylabel("Census PEP crude death rate (per 1,000 mid-year pop)")
+ax.set_title("Crude death rate trend — Washington + cohort counties vs NY county mean")
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper left", fontsize=8, ncol=2)
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading the plot.** Washington and Warren (rural, older age structure)
+typically run above the NY-county mean. Saratoga (younger, exurban) runs
+below. The 2020–2021 bump across all lines reflects pandemic-era excess
+mortality. Crude-rate ordering across counties is partly an age-structure
+artifact — a proper SMR analysis (deferred) would adjust this out.
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 8. Save survival rates
 
 We save the NCHS NVSR-derived rates for both US (2023) and NY state
 (2022), by sex, in a single tidy parquet. Downstream code (the
@@ -251,7 +395,7 @@ print(survival.groupby(["geoid", "geography", "year_start", "vintage"]).size()
 """),
     # ---------------------------------------------------------------
     md("""
-## 7. QA assertions
+## 9. QA assertions
 """),
     code("""
 def qa(survival: pd.DataFrame) -> None:

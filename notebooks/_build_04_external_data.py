@@ -124,6 +124,21 @@ print(compare["pct_diff"].describe().to_string())
 ACS 5-year estimates are typically within a percent or two of PEP
 totals — they're a smoothed 5-year average, not a single-year estimate,
 so small differences are expected and not a data-quality concern.
+
+**Why we deliberately don't rake ACS to PEP totals.** ACS measures a
+different estimand than PEP: ACS is a rolling 5-year survey average,
+while PEP is a point-in-time July 1 estimate. Forcing ACS to match a
+PEP level would corrupt the survey-based value with point-estimate
+information and remove the very signal that makes ACS useful as an
+independent series. Where ACS-derived population *levels* DO get
+constrained in this pipeline: notebook 09 applies a pro-rata constraint
+to scale Washington's town-level Hamilton-Perry forecasts so they sum
+to the controlled county forecast totals at every forecast year — i.e.,
+ACS towns get level-corrected at *projection time*, not at load time.
+The parallel decision for the CDC bridged-race and Census SYA age × sex
+frame is tracked in issue #6 (those sources *do* warrant controlling
+because they estimate the same quantity as PEP and differ only in
+level).
 """),
     # ---------------------------------------------------------------
     md("""

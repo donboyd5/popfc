@@ -93,6 +93,22 @@ PRIOR_VINTAGE_YEAR = 2019  # ACS 2015-2019 → midpoint 2017 (5 yrs before 2022)
 LATEST_VINTAGE_YEAR = 2024 # ACS 2020-2024 → midpoint 2022
 
 SCENARIOS = ("baseline", "low", "high")
+
+# CCR cap — per-step clipping bounds on the cohort change ratio.
+# - PRODUCTION (0.85, 1.20): allows ±15-20% change per 5-year step, compounding
+#   to roughly (0.44, 2.49) over the 5-step horizon. Conservative enough that
+#   small-sample ACS noise can't drive runaway projections, wide enough to
+#   capture real demographic divergence between WashCo's southern and
+#   northern towns.
+# - LEGACY (0.5, 2.0): the library default and the original Phase-4 choice.
+#   Allows halving or doubling per step, compounding up to 32x over the
+#   horizon — too wide for stable-population rural counties, especially when
+#   the 2020-2024 ACS vintage captures COVID-era rural in-migration that
+#   the method then extrapolates as a permanent trend.
+# We compute both in this notebook so you can see the sensitivity; only the
+# PRODUCTION version is saved to data_interim/town_forecasts.parquet.
+CCR_CAP_PRODUCTION = (0.85, 1.20)
+CCR_CAP_LEGACY = (0.5, 2.0)
 """),
     # ---------------------------------------------------------------
     md("""
@@ -140,15 +156,34 @@ print(totals_compare[["town", f"y{PRIOR_VINTAGE_YEAR-2}", f"y{LATEST_VINTAGE_YEA
     # ---------------------------------------------------------------
     md("""
 ## 2. Compute CCRs and CWRs
+
+We compute two versions of the CCRs — the **production** version uses a
+tight cap of (0.85, 1.20) per 5-year step; the **legacy** version uses
+the library default (0.5, 2.0). The two are compared at the end of this
+notebook so the cap choice is transparent. Only the production version
+flows into `data_interim/town_forecasts.parquet` and downstream.
 """),
     code("""
-ccr = cohort_change_ratios(pop_prior, pop_latest)
+ccr = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_PRODUCTION)
+ccr_legacy = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_LEGACY)
 cwr = child_woman_ratios(pop_latest)
+
 print(f"CCR rows: {len(ccr):,}  (~17 towns × 2 sex × 17 dest bands = {17*2*17})")
 print(f"CWR rows: {len(cwr):,}  (17 towns × 2 sex = {17*2})")
 print()
-print("CCR summary (closed bands only, all towns/sex/age):")
-print(ccr[ccr["age_band_start"] != 85]["ccr"].describe().to_string())
+print(f"Production cap {CCR_CAP_PRODUCTION}:")
+print(f"  clipped CCRs (closed bands): "
+      f"{int(ccr[ccr['age_band_start'] != 85]['clipped'].sum())}"
+      f" of {len(ccr[ccr['age_band_start'] != 85])}")
+print(f"  CCR summary (closed bands):")
+print(ccr[ccr["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
+print()
+print(f"Legacy cap {CCR_CAP_LEGACY}:")
+print(f"  clipped CCRs (closed bands): "
+      f"{int(ccr_legacy[ccr_legacy['age_band_start'] != 85]['clipped'].sum())}"
+      f" of {len(ccr_legacy[ccr_legacy['age_band_start'] != 85])}")
+print(f"  CCR summary (closed bands):")
+print(ccr_legacy[ccr_legacy["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
 print()
 print("CWR summary:")
 print(cwr["cwr"].describe().to_string())
@@ -409,22 +444,21 @@ providing a reference. Towns whose lines diverge from the county line
 positively are gaining share within the county; those that fall below it
 are losing share.
 
-What the data shows for this cohort (baseline):
+This plot uses the **production CCR cap (0.85, 1.20)** per 5-year step.
+The numeric values above are what's saved to
+`data_interim/town_forecasts.parquet`. Section 5c below shows what these
+trajectories looked like under the wider legacy cap — the change is
+substantial for the rural northern towns.
 
-- **Cambridge (+19.6%) and Greenwich (+29.2%)** — the only towns in this
-  selection that grow in absolute terms, and they grow strongly enough to
-  end up *well above* the declining county line. Consistent with broader
-  Capital District spillover into southern Washington County.
-- **White Creek (−11.8%) and Kingsbury (−19.9%)** — track close to the
-  county trend.
-- **Jackson (−21.7%) and Salem (−31.8%)** — decline somewhat faster than
-  the county.
-- **Granville (−47.5%)** — declines sharply, the steepest fall in this
-  cohort. Worth a closer look: the Hamilton-Perry CCRs derive from two ACS
-  vintages, and small-town CCRs can amplify a recent trend that may not
-  persist for 25 years. Granville's projection might warrant a sensitivity
-  check (e.g., re-running with a tighter CCR cap or a longer-baseline
-  average).
+**Read these town-level numbers for *insight*, not prediction.** The
+Hamilton-Perry method extrapolates one pair of ACS vintages (2015-2019 vs
+2020-2024) for 25 years. At the town level — especially for towns under
+~3,000 population — that's enough to amplify recent trends, ACS sampling
+noise, and any COVID-era movement, into a trajectory that the model
+cannot validate. The county-level total (cohort-component) is the
+predictive output we trust; the town-level breakdown is descriptive
+context for thinking about *which* parts of the county are growing or
+declining, not numerical forecasts.
 
 Method-driven caveats:
 - The interpolation is *linear* between 5-year endpoints, so within each
@@ -434,6 +468,121 @@ Method-driven caveats:
 - Annual rescaling to the county total uses a *uniform* per-year factor
   across all 17 towns, preserving within-year shares while pinning the
   annual sum.
+"""),
+    # ---------------------------------------------------------------
+    md("""
+### 5c. Sensitivity to the CCR cap
+
+The Hamilton-Perry projector clips CCRs to a band before iterating them
+forward. The default cap is wide — (0.5, 2.0) per 5-year step — which
+allows ratios to halve or double each step and **compound up to 32x over
+the 5-step horizon**. For rural Washington County towns whose ACS
+vintages happen to capture COVID-era in-migration, the unconstrained
+projection then grows runaway: the sum of all 17 unconstrained towns
+reached ~77k by 2047 while the cohort-component county total declines
+toward ~46k. The pro-rata constraint resolves the disagreement by
+uniformly haircutting every town by ~40% in 2047, which over-corrects
+towns whose unconstrained projection wasn't already growing.
+
+The production cap (0.85, 1.20) compresses CCRs to roughly ±15-20% per
+step, compounding to about (0.44, 2.49) over the horizon. This still
+captures real demographic differences between southern (Capital District
+spillover) and northern (rural depopulation) Washington but cuts off the
+small-sample noise that drove the extreme legacy-cap trajectories.
+
+Below: the same 7 selected towns under both caps, indexed to 2022 = 100,
+post-constraint to the baseline county forecast.
+"""),
+    code("""
+# Project all 17 towns with the LEGACY cap CCRs.
+proj_list_legacy = []
+for geoid, name in names["geography"].items():
+    town_pop = pop_latest[pop_latest["geoid"] == geoid]
+    if town_pop.empty:
+        continue
+    try:
+        sub = project_one_county_hp(
+            town_pop, ccr_legacy, cwr,
+            base_year=BASE_YEAR_TOWN, end_year=END_YEAR_TOWN,
+            geoid=geoid, geography=name.split(",")[0],
+            scenario="unconstrained",
+            projection_vintage=f"hp_legacy_cap{CCR_CAP_LEGACY}",
+        )
+        proj_list_legacy.append(sub)
+    except ValueError:
+        pass
+unconstrained_legacy = pd.concat(proj_list_legacy, ignore_index=True)
+
+# Apply baseline pro-rata constraint to the legacy projection.
+constraint_years_legacy = [y for y in unconstrained_legacy["year"].unique() if y > BASE_YEAR_TOWN]
+target_baseline = wash_county[wash_county["scenario"] == "baseline"][["year", "population"]]
+target_baseline = target_baseline[target_baseline["year"].isin(constraint_years_legacy)]
+sub_legacy = unconstrained_legacy[unconstrained_legacy["year"].isin(constraint_years_legacy)].copy()
+constrained_legacy_post = apply_prorata_constraint(sub_legacy, target_baseline)
+base_legacy = unconstrained_legacy[unconstrained_legacy["year"] == BASE_YEAR_TOWN].copy()
+base_legacy["constraint_factor"] = 1.0
+base_legacy["constraint_applied"] = False
+constrained_legacy_post["scenario"] = "baseline_legacy_cap"
+base_legacy["scenario"] = "baseline_legacy_cap"
+town_legacy_constrained = pd.concat([base_legacy, constrained_legacy_post], ignore_index=True)
+
+# Interpolate annual values for the legacy projection (same method as 5b).
+tf_legacy_totals = (
+    town_legacy_constrained.groupby(["geography", "year"])["population"].sum().reset_index()
+)
+town_wide_legacy = tf_legacy_totals.pivot(index="geography", columns="year", values="population")
+town_annual_legacy = town_wide_legacy.reindex(columns=ANNUAL_YEARS).astype(float).interpolate(
+    method="linear", axis=1, limit_area="inside"
+)
+# Rescale annual sums to the county target (same as 5b).
+rescale_legacy = county_target / town_annual_legacy.sum(axis=0)
+town_constrained_legacy_annual = town_annual_legacy.multiply(rescale_legacy, axis=1)
+town_indexed_legacy = town_constrained_legacy_annual.div(
+    town_constrained_legacy_annual[BASE_YEAR_TOWN], axis=0
+) * 100.0
+
+# Side-by-side plot: same 7 towns, both caps.
+fig, axes = plt.subplots(1, 2, figsize=(15, 6.5), sharey=True)
+for ax, town_data, title in [
+    (axes[0], town_indexed_legacy, f"LEGACY cap {CCR_CAP_LEGACY}"),
+    (axes[1], town_indexed,        f"PRODUCTION cap {CCR_CAP_PRODUCTION}"),
+]:
+    for town, color in zip(SELECTED_SOUTHERN, southern_colors):
+        line = town_data.loc[town]
+        ax.plot(line.index, line.values, color=color, linewidth=1.8,
+                marker="o", markersize=2.2, label=f"S: {town.replace(' town','')}")
+    for town, color in zip(SELECTED_NORTHERN, northern_colors):
+        line = town_data.loc[town]
+        ax.plot(line.index, line.values, color=color, linewidth=1.8,
+                marker="o", markersize=2.2, label=f"N: {town.replace(' town','')}")
+    ax.plot(county_indexed.index, county_indexed.values, color="black",
+            linewidth=1.3, linestyle="--", alpha=0.7, label="WashCo (reference)")
+    ax.axhline(100, color="grey", linewidth=0.5)
+    for y in [2027, 2032, 2037, 2042, 2047]:
+        ax.axvline(y, color="grey", linewidth=0.3, alpha=0.4)
+    ax.set_xlabel("year")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3, axis="y")
+axes[0].set_ylabel("indexed population (2022 = 100)")
+axes[0].legend(loc="best", fontsize=8, ncol=2)
+fig.suptitle("CCR cap sensitivity — same 7 towns, baseline scenario, constrained to county forecast",
+             y=1.00)
+fig.tight_layout()
+plt.show()
+
+# Tabular comparison at 2047
+end_compare = pd.DataFrame({
+    "legacy_2047": town_indexed_legacy.loc[SELECTED_TOWNS, END_YEAR_TOWN].round(1),
+    "production_2047": town_indexed.loc[SELECTED_TOWNS, END_YEAR_TOWN].round(1),
+})
+end_compare["change_in_endpoint"] = (end_compare["production_2047"] - end_compare["legacy_2047"]).round(1)
+print(f"\\n{END_YEAR_TOWN} indexed values (2022 = 100), selected towns:")
+print(end_compare.to_string())
+print(f"\\nThe production cap pulls extreme legacy projections back toward the")
+print(f"county trend (≈ 80, since the county declines ~20%). Towns that look")
+print(f"qualitatively different from neighbors under the legacy cap are typically")
+print(f"the result of ACS sampling noise compounded over 5 steps, not real")
+print(f"demographic divergence we can validate.")
 """),
     # ---------------------------------------------------------------
     md("""
@@ -512,14 +661,27 @@ print(f"wrote {out_path}  ({len(town_forecasts):,} rows)")
     md("""
 ## Notes and caveats
 
+- **Town-level projections are for insight, not prediction.**
+  Hamilton-Perry extrapolates one pair of ACS vintages forward 25 years.
+  At the town level this amplifies (a) ACS sampling noise — MOEs in
+  small towns rival their populations — and (b) any short-window trend
+  the two vintages happened to capture (e.g., COVID-era rural
+  in-migration). The county-level total comes from the cohort-component
+  engine (Notebook 08); we trust that. The town-level disaggregation is
+  best read as a directional answer to "which parts of the county are
+  growing or declining," not as a numeric forecast.
+- **CCR cap** is set tight at (0.85, 1.20) per 5-year step (production)
+  to mitigate the noise-amplification problem (section 5c shows the
+  legacy-default (0.5, 2.0) comparison). Even the tight cap allows
+  compound divergence up to (0.44, 2.49) over the 5-step horizon —
+  enough room for the south-vs-north pattern but not for individual
+  small towns to run away.
 - **5-year cadence** is built into Hamilton-Perry — town projections only
   exist at 2022, 2027, 2032, ... The county forecast (annual) is sampled
-  at those years for the constraint. Annual town projections would
-  require either interpolation post-hoc or a different method.
+  at those years for the constraint. Section 5b interpolates between
+  endpoints linearly with annual rescaling to the county total.
 - **Constant CCRs** assume the 2017→2022 cohort dynamics persist through
-  2047. For some towns this carries pandemic-era shocks forward. Could
-  use a longer baseline (multiple ACS vintages) if Phase 2 history is
-  needed.
+  2047. For some towns this carries pandemic-era shocks forward.
 - **Pro-rata only adjusts level**, not age × sex structure. If a town's
   pyramid is unusual relative to the county and the county forecast
   expects different aging dynamics, the town's structure won't shift

@@ -49,7 +49,7 @@ import requests
 # Note: `LATEST_ACS5_YEAR` lives in `popfc.data.acs`, not in `paths.py`. We
 # import it lazily inside the ACS registration callables so this module stays
 # importable even if acs.py changes its public surface.
-from popfc.paths import ACS_DIR, NCHS_DIR, PROJECT_ROOT
+from popfc.paths import ACS_DIR, CENSUS_DIR, NCHS_DIR, NYSDOL_DIR, PROJECT_ROOT
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +66,14 @@ class DownloadSpec:
     description: str
     source_url: str | None = None
     fetcher: Callable[["DownloadSpec", bool], None] | None = None
+    # When the target filename varies between downloads (e.g., a date stamp),
+    # supply an exists_check that returns True iff any acceptable copy is on
+    # disk. Defaults to `target.exists()`.
+    exists_check: Callable[["DownloadSpec"], bool] | None = None
 
     def exists(self) -> bool:
+        if self.exists_check is not None:
+            return self.exists_check(self)
         return self.target.exists()
 
     def refresh(self, force: bool = False) -> None:
@@ -123,6 +129,89 @@ def register(spec: DownloadSpec) -> DownloadSpec:
         raise ValueError(f"Duplicate DownloadSpec name: {spec.name}")
     REGISTRY[spec.name] = spec
     return spec
+
+
+# ---------------------------------------------------------------------------
+# Census PEP — county totals/components, single-year-of-age × sex, subcounty
+# ---------------------------------------------------------------------------
+
+_PEP_BASE = "https://www2.census.gov/programs-surveys/popest/datasets"
+
+register(DownloadSpec(
+    name="census_pep_v2025_county_alldata",
+    target=CENSUS_DIR / "2020-plus" / "co-est2025-alldata.csv",
+    description="Census PEP V2025 — county totals + components of change, 7/1/2020 to 7/1/2025",
+    source_url=f"{_PEP_BASE}/2020-2025/counties/totals/co-est2025-alldata.csv",
+    fetcher=_http_get_to_file,
+))
+
+register(DownloadSpec(
+    name="census_pep_v2024_county_syasex_ny",
+    target=CENSUS_DIR / "2020-plus" / "cc-est2024-syasex-36.csv",
+    description="Census PEP V2024 — NY single-year-of-age × sex by county, 7/1/2020 to 7/1/2024",
+    source_url=f"{_PEP_BASE}/2020-2024/counties/asrh/cc-est2024-syasex-36.csv",
+    fetcher=_http_get_to_file,
+))
+
+register(DownloadSpec(
+    name="census_pep_v2025_subcounty",
+    target=CENSUS_DIR / "2020-plus" / "sub-est2025.csv",
+    description="Census PEP V2025 — subcounty (incorporated places + MCDs) population, 7/1/2020 to 7/1/2025",
+    source_url=f"{_PEP_BASE}/2020-2025/cities/totals/sub-est2025.csv",
+    fetcher=_http_get_to_file,
+))
+
+
+# ---------------------------------------------------------------------------
+# NYSDOL annual county estimates (Socrata; vintage = date of download)
+# ---------------------------------------------------------------------------
+
+_NYSDOL_BASE_FILENAME = "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970"
+
+
+def _nysdol_target_for_today() -> Path:
+    """Return today's dated target path for the NYSDOL annual CSV."""
+    from datetime import date  # local import keeps module-import side effects small
+    stamp = date.today().strftime("%Y%m%d")
+    return NYSDOL_DIR / f"{_NYSDOL_BASE_FILENAME}_{stamp}.csv"
+
+
+def _nysdol_existing() -> Path | None:
+    """Most recent dated NYSDOL CSV on disk (by filename date), or None."""
+    cands = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE_FILENAME}_*.csv"))
+    return cands[-1] if cands else None
+
+
+def _nysdol_fetcher(spec: DownloadSpec, force: bool) -> None:
+    """Save the response under today's date stamp; reuse any existing dated copy unless forced."""
+    existing = _nysdol_existing()
+    if existing is not None and not force:
+        print(f"  [cached] {_display_path(existing)}")
+        return
+    today_target = _nysdol_target_for_today()
+    today_target.parent.mkdir(parents=True, exist_ok=True)
+    if spec.source_url is None:
+        raise RuntimeError(f"{spec.name}: NYSDOL fetcher requires a source_url")
+    resp = requests.get(spec.source_url, stream=True, timeout=120)
+    resp.raise_for_status()
+    with open(today_target, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=1 << 16):
+            if chunk:
+                f.write(chunk)
+    print(f"  [fetched] {_display_path(today_target)}  "
+          f"({today_target.stat().st_size:,} bytes)")
+
+
+register(DownloadSpec(
+    name="nysdol_annual_pop_county",
+    # target points to today's would-be filename for display purposes; the
+    # exists_check below accepts any prior dated copy in the directory.
+    target=_nysdol_target_for_today(),
+    description="NYSDOL annual county/state population estimates (data.ny.gov krt9-ym2k)",
+    source_url="https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD",
+    fetcher=_nysdol_fetcher,
+    exists_check=lambda _spec: _nysdol_existing() is not None,
+))
 
 
 # ---------------------------------------------------------------------------

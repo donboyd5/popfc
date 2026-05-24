@@ -33,7 +33,7 @@ from popfc.paths import NYSDOL_DIR
 # Default file — update when a newer vintage is dropped in.
 DEFAULT_NYSDOL_ANNUAL = (
     NYSDOL_DIR
-    / "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20250420.csv"
+    / "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20260524.csv"
 )
 
 # Map NYSDOL's `program_type` strings to our canonical `kind` values.

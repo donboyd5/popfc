@@ -35,10 +35,10 @@ from popfc.data._common import (
 from popfc.paths import CENSUS_DIR
 
 # Default paths — override via function args when loading a newer vintage.
-DEFAULT_PEP_2020_PLUS = CENSUS_DIR / "2020-plus" / "co-est2024-alldata.csv"
+DEFAULT_PEP_2020_PLUS = CENSUS_DIR / "2020-plus" / "co-est2025-alldata.csv"
 DEFAULT_PEP_2010_2020 = CENSUS_DIR / "2010-2020" / "co-est2020-alldata.csv"
 DEFAULT_PEP_2000_2010 = CENSUS_DIR / "2000-2010" / "co-est00int-tot.csv"
-DEFAULT_SYA_2020_PLUS = CENSUS_DIR / "2020-plus" / "cc-est2023-syasex-36.csv"
+DEFAULT_SYA_2020_PLUS = CENSUS_DIR / "2020-plus" / "cc-est2024-syasex-36.csv"
 
 # Census SUMLEV codes
 SUMLEV_STATE = 40
@@ -254,8 +254,8 @@ def load_pep_2020_plus(
     raw = read_csv_strings(path)
     df = _prepare_frame(raw, state_filter=state_filter)
 
-    # Years covered: 2020-2024. Columns include ESTIMATESBASE2020 and POPESTIMATE2020..2024.
-    year_cols = {y: f"POPESTIMATE{y}" for y in range(2020, 2025)}
+    # Years covered: 2020-2025. Columns include ESTIMATESBASE2020 and POPESTIMATE2020..2025.
+    year_cols = {y: f"POPESTIMATE{y}" for y in range(2020, 2026)}
     pop_estimates = _wide_to_long_pop(
         df, year_cols, kind="estimate", source="census_pep", vintage=vintage
     )
@@ -401,29 +401,38 @@ def load_all_pep(
 # Single-year-of-age × sex × year loader (post-2020 vintages)
 # ---------------------------------------------------------------------------
 
-# YEAR-code mapping for `cc-est2023-syasex-36.csv` (vintage 2023 release).
+# YEAR-code mapping for the cc-estYYYY-syasex-36.csv files.
 #
-# Census documents this mapping in the file's accompanying README. For this
-# vintage the codes are:
+# Census documents this mapping in each file's accompanying README. For both
+# the V2023 and V2024 releases the codes are:
 #
-#   1 = 4/1/2020 Census enumeration       (kind='census',  calendar=2020)
+#   1 = 4/1/2020 Estimates Base           (kind='census',   calendar=2020)
 #   2 = 7/1/2020 Population Estimate      (kind='estimate', calendar=2020)
 #   3 = 7/1/2021 Population Estimate      (kind='estimate', calendar=2021)
 #   4 = 7/1/2022 Population Estimate      (kind='estimate', calendar=2022)
 #   5 = 7/1/2023 Population Estimate      (kind='estimate', calendar=2023)
+#   6 = 7/1/2024 Population Estimate      (kind='estimate', calendar=2024)   [V2024 only]
 #
-# Verification: totals per (county, YEAR-code) match NYSDOL's `nysdol_2025-04-20`
-# series (which sources from Census PEP for 2020+) to the unit for every YEAR
-# code and every NY county. **Always re-verify when a newer vintage is dropped
-# in** — Census occasionally shifts the codes (older `cc-est20XX` files
-# include both 4/1/2020 Census and 4/1/2020 Estimates Base, so the mapping
-# has 6 codes instead of 5).
+# Code 1 is the demographic-analysis-adjusted 4/1/2020 base used by PEP, which
+# is within a few persons of the raw 4/1/2020 census enumeration; we label it
+# 'census' for continuity with the rest of the pipeline.
+#
+# Verification: cross-checks against PEP V2024 county totals match SYA V2024
+# at the unit for every code and every NY county. **Always re-verify when a
+# newer vintage is dropped in** — Census occasionally shifts the codes (older
+# `cc-est20XX` files include both 4/1/2020 Census and 4/1/2020 Estimates Base,
+# so the mapping has 6 codes instead of 5).
 _SYA_YEAR_MAP_V2023: dict[int, tuple[int, str]] = {
     1: (2020, "census"),
     2: (2020, "estimate"),
     3: (2021, "estimate"),
     4: (2022, "estimate"),
     5: (2023, "estimate"),
+}
+
+_SYA_YEAR_MAP_V2024: dict[int, tuple[int, str]] = {
+    **_SYA_YEAR_MAP_V2023,
+    6: (2024, "estimate"),
 }
 
 
@@ -450,9 +459,10 @@ def load_census_sya(
         load all states (the file ships per-state, so this is usually
         redundant).
     year_map
-        Override the YEAR-code mapping. Defaults to `_SYA_YEAR_MAP_V2023`.
-        Newer vintages may use a different mapping — re-verify before
-        upgrading the default.
+        Override the YEAR-code mapping. Defaults to `_SYA_YEAR_MAP_V2024`
+        (codes 1-6, covering 4/1/2020 through 7/1/2024). For the older V2023
+        vintage file, pass `_SYA_YEAR_MAP_V2023` explicitly. **Always re-verify
+        the mapping before upgrading the default to a newer vintage.**
     vintage
         Vintage tag for the output. Default is derived from the filename.
 
@@ -463,7 +473,7 @@ def load_census_sya(
     """
     path = Path(path) if path is not None else DEFAULT_SYA_2020_PLUS
     if year_map is None:
-        year_map = _SYA_YEAR_MAP_V2023
+        year_map = _SYA_YEAR_MAP_V2024
     if vintage is None:
         vintage = _derive_vintage(path, fallback="syasex_unknown")
         if not vintage.startswith("sya_"):

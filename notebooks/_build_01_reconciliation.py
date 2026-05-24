@@ -44,26 +44,30 @@ clear provenance.
 
 ## Reconciliation rules
 
-Following the R project's investigation (see
-`docs/r_reference/create_county_population_control_totals.qmd`) plus our own
-review:
+Every retained value is a **July 1** estimate. We deliberately do not anchor
+on the April 1 decennial enumerations at 2000/2010/2020 — using April 1
+counts inside an otherwise July 1 series introduces a ~3-month phase shift
+at each decade boundary that distorts trend visualizations and confuses
+year-over-year change.
 
-1. **Decennial census years** (2000, 2010, 2020) — use the decennial census
-   count (`CENSUS2010POP` / `Census Base Population`), which is the definitive
-   enumeration.
-2. **Postcensal years** (≥ 2020) — Census PEP postcensal estimate, latest
-   vintage. Census is the authority for the current decade.
-3. **Intercensal years** (pre-2020 non-decennial) — **NYSDOL intercensal
-   estimate** as primary. Rationale: NYSDOL's annual series extends back to
-   1970 with consistent methodology, and was treated as authoritative by the
-   legacy R workflow.
-4. **Vintage overlap** — when two PEP files cover the same year, prefer the
-   later vintage (reflects updated methodology).
-5. **Caveat — components of change do NOT reconcile across the decennial
-   seam.** Intercensal totals are smoothed to hit the decennial count, but
-   the published component series (births, deaths, migration) sums to the
-   postcensal (not intercensal) total. We carry both and flag the difference
-   as the "intercensal residual" rather than adjusting components.
+1. **2000–2019** — **NYSDOL July 1 intercensal estimate**. NYSDOL publishes
+   an annual July 1 series back to 1970 with consistent methodology, and
+   the legacy R workflow used it as the authoritative intercensal source.
+   The series flows continuously through the 2000 and 2010 decennials.
+2. **2020+** — **Census PEP July 1 postcensal estimate**, latest vintage.
+   The Census Bureau anchors PEP's July 1, 2020 value to the April 1, 2020
+   decennial count and then carries it forward year by year — so 2020+ is
+   PEP's natural domain and we follow that.
+3. **Vintage overlap** — when two PEP files cover the same year, we keep
+   the later vintage because the Census Bureau revised its methodology in
+   the newer release.
+4. **Caveat — components of change do NOT reconcile across the decennial
+   seam.** The Census Bureau smooths its intercensal July 1 totals so they
+   land on the new decennial count at each decade boundary, but the Bureau's
+   published components (births, deaths, migration) for those same years
+   still sum to the original (unsmoothed) postcensal totals. We carry both
+   and flag the difference as the "intercensal residual" rather than
+   adjusting the components ourselves.
 
 ## Output
 

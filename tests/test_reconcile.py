@@ -80,20 +80,24 @@ class TestResolvePepVintage:
 
 class TestReconcileCountyPopulation:
     def _frames(self):
-        # Minimal three-year scenario for one county.
+        # Minimal scenario covering both rule blocks and the 2019/2020 seam.
         pep = pd.DataFrame([
             _pop_row(geoid="36115", year=2020, kind="estimate",
-                     population=61297, source="census_pep", vintage="v2024"),
+                     population=61106, source="census_pep", vintage="v2024"),
             _pop_row(geoid="36115", year=2021, kind="estimate",
                      population=60871, source="census_pep", vintage="v2024"),
             _pop_row(geoid="36115", year=2022, kind="estimate",
                      population=60764, source="census_pep", vintage="v2024"),
         ])
         nysdol = pd.DataFrame([
-            _pop_row(geoid="36115", year=2010, kind="census",
-                     population=63254, source="nysdol", vintage="nysdol_2025-04-20"),
+            _pop_row(geoid="36115", year=2000, kind="intercensal",
+                     population=60977, source="nysdol", vintage="nysdol_2025-04-20"),
+            _pop_row(geoid="36115", year=2010, kind="intercensal",
+                     population=63372, source="nysdol", vintage="nysdol_2025-04-20"),
             _pop_row(geoid="36115", year=2019, kind="intercensal",
                      population=61665, source="nysdol", vintage="nysdol_2025-04-20"),
+            # NYSDOL also publishes a kind='census' (April 1) row at decennials,
+            # but the new rule ignores it. Include one to confirm it's not picked.
             _pop_row(geoid="36115", year=2020, kind="census",
                      population=61297, source="nysdol", vintage="nysdol_2025-04-20"),
         ])
@@ -103,30 +107,22 @@ class TestReconcileCountyPopulation:
         pep, nysdol = self._frames()
         out = reconcile_county_population(pep, nysdol)
         by_year = out.set_index("year")["rule"].to_dict()
-        assert by_year[2010] == "decennial_census_nysdol"
-        assert by_year[2019] == "intercensal_nysdol"
-        assert by_year[2020] == "decennial_census_nysdol"
-        assert by_year[2021] == "postcensal_census_pep"
-        assert by_year[2022] == "postcensal_census_pep"
+        assert by_year[2000] == "july1_nysdol_intercensal"
+        assert by_year[2010] == "july1_nysdol_intercensal"
+        assert by_year[2019] == "july1_nysdol_intercensal"
+        assert by_year[2020] == "july1_census_pep"
+        assert by_year[2021] == "july1_census_pep"
+        assert by_year[2022] == "july1_census_pep"
+
+    def test_decennial_uses_july1_not_april1(self):
+        # 2020 should be the PEP July 1 estimate (61106), not the NYSDOL
+        # April 1 census count (61297).
+        pep, nysdol = self._frames()
+        out = reconcile_county_population(pep, nysdol)
+        pop_2020 = int(out.loc[out["year"] == 2020, "population"].iloc[0])
+        assert pop_2020 == 61106
 
     def test_unique_per_geoid_year(self):
         pep, nysdol = self._frames()
         out = reconcile_county_population(pep, nysdol)
-        assert (out.groupby(["geoid", "year"]).size() == 1).all()
-
-    def test_raises_on_rule_overlap(self):
-        # Force a duplicate by adding a NYSDOL intercensal row for 2020
-        # (which should never happen in real data — 2020 is a decennial year).
-        pep, nysdol = self._frames()
-        bad = nysdol.copy()
-        bad = pd.concat([
-            bad,
-            pd.DataFrame([_pop_row(
-                geoid="36115", year=2010, kind="intercensal",  # collides with decennial 2010? No — 2010 is excluded from intercensal.
-                population=99999, source="nysdol", vintage="nysdol_2025-04-20",
-            )]),
-        ], ignore_index=True)
-        # 2010 is explicitly excluded from the intercensal rule, so this should
-        # *not* raise. Just confirm.
-        out = reconcile_county_population(pep, bad)
         assert (out.groupby(["geoid", "year"]).size() == 1).all()

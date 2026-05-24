@@ -64,16 +64,22 @@ def reconcile_county_population(
 ) -> pd.DataFrame:
     """Apply the Phase-1 reconciliation rules.
 
-    Rules (see Notebook 01 for full rationale):
+    Every retained row is a **July 1** estimate, including at decennial
+    years — we deliberately do *not* use the April 1 enumeration (see
+    Notebook 01 for rationale).
 
-    1. **Decennial anchors** (2000, 2010, 2020) — NYSDOL "Census Base
-       Population" (`kind='census'`). Single curated series across all
-       three decennials.
-    2. **Postcensal years** (2021+) — Census PEP postcensal estimate,
-       latest vintage (caller is expected to have run
-       `resolve_pep_vintage` first).
-    3. **Intercensal years** (2001–2019 non-decennial) — NYSDOL
-       intercensal estimate.
+    Rules:
+
+    1. **2000–2019** — NYSDOL July 1 intercensal estimate
+       (`source='nysdol'`, `kind='intercensal'`). NYSDOL's continuous
+       July 1 series provides the values, including at the 2000 and
+       2010 decennials.
+    2. **2020+** — Census PEP July 1 postcensal estimate
+       (`source='census_pep'`, `kind='estimate'`), latest vintage. The
+       caller must run `resolve_pep_vintage` first so each
+       `(geoid, year, kind)` has only the latest vintage. The 2020
+       decennial year sits in this block as the base of the PEP
+       postcensal series.
 
     The output schema matches the input POP_LONG_COLUMNS with one added
     `rule` column documenting *why* each row was chosen.
@@ -84,26 +90,19 @@ def reconcile_county_population(
         If the rules produce duplicate `(geoid, year)` rows. Catches bugs
         in rule overlap, not data problems.
     """
-    decennial = pop_nysdol[
-        (pop_nysdol["kind"] == "census")
-        & (pop_nysdol["year"].isin([2000, 2010, 2020]))
+    intercensal = pop_nysdol[
+        (pop_nysdol["kind"] == "intercensal")
+        & (pop_nysdol["year"].between(2000, 2019))
     ].copy()
-    decennial["rule"] = "decennial_census_nysdol"
+    intercensal["rule"] = "july1_nysdol_intercensal"
 
     postcensal = pop_pep_resolved[
         (pop_pep_resolved["kind"] == "estimate")
-        & (pop_pep_resolved["year"] >= 2021)
+        & (pop_pep_resolved["year"] >= 2020)
     ].copy()
-    postcensal["rule"] = "postcensal_census_pep"
+    postcensal["rule"] = "july1_census_pep"
 
-    intercensal = pop_nysdol[
-        (pop_nysdol["kind"] == "intercensal")
-        & (pop_nysdol["year"].between(2001, 2019))
-        & (~pop_nysdol["year"].isin([2010]))
-    ].copy()
-    intercensal["rule"] = "intercensal_nysdol"
-
-    chosen = pd.concat([decennial, intercensal, postcensal], ignore_index=True)
+    chosen = pd.concat([intercensal, postcensal], ignore_index=True)
 
     dup = chosen.groupby(["geoid", "year"]).size()
     if (dup > 1).any():

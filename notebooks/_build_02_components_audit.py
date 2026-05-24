@@ -184,10 +184,13 @@ print(ident_summary.to_string())
     md("""
 ### Where does the identity fail?
 
-Sort by absolute closure error. Non-zero errors are concentrated at
+Sort by absolute closure error. Non-zero errors concentrate at
 **decennial seam years** (2020) — see the data-quality note in Notebook
-01: intercensal totals are smoothed to hit the decennial count, but the
-published components sum to the postcensal total.
+01: the Census Bureau smooths its intercensal July 1 totals so they
+land on the new decennial count at each decade boundary, but the
+Bureau's published components (births, deaths, migration) for those
+same years still sum to the original (unsmoothed) postcensal totals,
+not the smoothed intercensal totals.
 """),
     code("""
 violators = identity[identity["closure_error"].abs() > 0].copy()

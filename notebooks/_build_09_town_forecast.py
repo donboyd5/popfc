@@ -275,6 +275,168 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
+### 5b. Indexed comparison — selected towns, annual interpolation
+
+Compare growth trajectories across a subset of towns on a single chart by
+indexing each town's population to its 2022 value = 100. Indexing removes
+the size-difference distortion (Kingsbury at ~12k would otherwise dominate
+Jackson at ~1.7k) and lets us read shape directly.
+
+**Selected towns**:
+- *Southern* — Cambridge, White Creek, Jackson, Salem, Greenwich
+- *Northern* — Granville, Kingsbury (the largest town in the county, picked
+  for the size-and-trend contrast against the smaller southern towns)
+
+**Interpolation method**. The Hamilton-Perry projector emits 5-year endpoints
+(2022, 2027, 2032, 2037, 2042, 2047), and notebook 08's county forecast emits
+annual values. We linearly interpolate each town's population between its
+5-year endpoints to get annual values 2022→2047, then rescale every year so
+the annual town totals sum exactly to the annual county forecast. The
+rescaling factor at each year is `county_annual_target / sum_of_interpolated_towns`,
+applied uniformly to all 17 towns at that year — so within-year town shares
+are preserved while the annual sum hits the county target on the nose.
+
+For 2022, the county "target" is the sum of the ACS-based town totals (no
+external county anchor since 2022 predates the cohort-component forecast).
+For 2023–2047, the target is the county forecast at the corresponding year.
+"""),
+    code("""
+SELECTED_SOUTHERN = ["Cambridge town", "White Creek town", "Jackson town",
+                     "Salem town", "Greenwich town"]
+SELECTED_NORTHERN = ["Granville town", "Kingsbury town"]
+SELECTED_TOWNS = SELECTED_SOUTHERN + SELECTED_NORTHERN
+ANNUAL_YEARS = list(range(BASE_YEAR_TOWN, END_YEAR_TOWN + 1))
+
+# Baseline town endpoints (sum across sex × age band).
+tf_base_totals = (
+    town_forecasts[town_forecasts["scenario"] == "baseline"]
+    .groupby(["geography", "year"])["population"].sum()
+    .reset_index()
+)
+town_wide = tf_base_totals.pivot(index="geography", columns="year", values="population")
+
+# Linear interpolation between 5-year endpoints, annual.
+town_annual = town_wide.reindex(columns=ANNUAL_YEARS).astype(float).interpolate(
+    method="linear", axis=1, limit_area="inside"
+)
+
+# County annual targets.
+county_baseline_annual = (
+    wash_county[wash_county["scenario"] == "baseline"]
+    .set_index("year")["population"].astype(float)
+)
+county_target = pd.Series(index=ANNUAL_YEARS, dtype=float)
+county_target.loc[BASE_YEAR_TOWN] = float(town_annual[BASE_YEAR_TOWN].sum())
+for y in ANNUAL_YEARS:
+    if y == BASE_YEAR_TOWN:
+        continue
+    if y in county_baseline_annual.index:
+        county_target.loc[y] = float(county_baseline_annual.loc[y])
+
+# Rescale so interpolated town sums hit the county target exactly.
+town_sums_annual = town_annual.sum(axis=0)
+rescale = county_target / town_sums_annual
+town_constrained = town_annual.multiply(rescale, axis=1)
+
+# Verify
+check = pd.DataFrame({
+    "town_sum_after_rescale": town_constrained.sum(axis=0).round(1),
+    "county_target": county_target.round(1),
+    "diff": (town_constrained.sum(axis=0) - county_target).round(6),
+})
+print("Constraint check — annual town sums vs county target (should match exactly):")
+print(check.loc[[BASE_YEAR_TOWN, BASE_YEAR_TOWN + 1, BASE_YEAR_TOWN + 5, BASE_YEAR_TOWN + 10,
+                 BASE_YEAR_TOWN + 15, END_YEAR_TOWN]].to_string())
+
+# Index to 2022 = 100.
+town_indexed = town_constrained.div(town_constrained[BASE_YEAR_TOWN], axis=0) * 100.0
+county_indexed = county_target / county_target.loc[BASE_YEAR_TOWN] * 100.0
+"""),
+    code("""
+fig, ax = plt.subplots(figsize=(12, 6.5))
+southern_colors = plt.cm.Blues(np.linspace(0.45, 0.95, len(SELECTED_SOUTHERN)))
+northern_colors = plt.cm.Reds(np.linspace(0.55, 0.90, len(SELECTED_NORTHERN)))
+
+for town, color in zip(SELECTED_SOUTHERN, southern_colors):
+    line = town_indexed.loc[town]
+    ax.plot(line.index, line.values, color=color, linewidth=1.8, marker="o", markersize=2.5,
+            label=f"S: {town.replace(' town','')}")
+
+for town, color in zip(SELECTED_NORTHERN, northern_colors):
+    line = town_indexed.loc[town]
+    ax.plot(line.index, line.values, color=color, linewidth=1.8, marker="o", markersize=2.5,
+            label=f"N: {town.replace(' town','')}")
+
+ax.plot(county_indexed.index, county_indexed.values, color="black", linewidth=1.4,
+        linestyle="--", alpha=0.7, label="WashCo county (reference)")
+
+ax.axhline(100, color="grey", linewidth=0.5)
+# Mark the 5-year forecast endpoints on the x-axis.
+for y in sorted(town_wide.columns):
+    ax.axvline(y, color="grey", linewidth=0.3, alpha=0.4)
+ax.set_xlabel("year")
+ax.set_ylabel("indexed population (2022 = 100)")
+ax.set_title("Selected Washington County towns — indexed population trajectories, baseline scenario\\n"
+             "(linear interpolation between 5-year endpoints, rescaled annually to county total)")
+ax.grid(True, alpha=0.3, axis="y")
+ax.legend(loc="best", fontsize=9, ncol=2)
+fig.tight_layout()
+plt.show()
+
+# Tabular summary at endpoint years.
+print()
+print("Indexed values at 5-year endpoints (2022 = 100):")
+endpoint_yrs = sorted(town_wide.columns)
+print(town_indexed.loc[SELECTED_TOWNS, endpoint_yrs].round(1).to_string())
+print()
+# Absolute 2022 and 2047 values for context (since the indexed plot hides them)
+abs_table = pd.DataFrame({
+    "pop_2022": town_constrained.loc[SELECTED_TOWNS, BASE_YEAR_TOWN].round(0).astype(int),
+    "pop_2047": town_constrained.loc[SELECTED_TOWNS, END_YEAR_TOWN].round(0).astype(int),
+    "abs_change": (town_constrained.loc[SELECTED_TOWNS, END_YEAR_TOWN]
+                   - town_constrained.loc[SELECTED_TOWNS, BASE_YEAR_TOWN]).round(0).astype(int),
+    "pct_change": ((town_constrained.loc[SELECTED_TOWNS, END_YEAR_TOWN]
+                    / town_constrained.loc[SELECTED_TOWNS, BASE_YEAR_TOWN] - 1) * 100).round(1),
+})
+print("Absolute 2022 → 2047 (for size context):")
+print(abs_table.to_string())
+"""),
+    md("""
+**Reading the plot.** Lines above 100 are towns that grow relative to 2022;
+lines below 100 are towns that decline. The dashed black line is the
+Washington County total (declining roughly −20% by 2047 in baseline),
+providing a reference. Towns whose lines diverge from the county line
+positively are gaining share within the county; those that fall below it
+are losing share.
+
+What the data shows for this cohort (baseline):
+
+- **Cambridge (+19.6%) and Greenwich (+29.2%)** — the only towns in this
+  selection that grow in absolute terms, and they grow strongly enough to
+  end up *well above* the declining county line. Consistent with broader
+  Capital District spillover into southern Washington County.
+- **White Creek (−11.8%) and Kingsbury (−19.9%)** — track close to the
+  county trend.
+- **Jackson (−21.7%) and Salem (−31.8%)** — decline somewhat faster than
+  the county.
+- **Granville (−47.5%)** — declines sharply, the steepest fall in this
+  cohort. Worth a closer look: the Hamilton-Perry CCRs derive from two ACS
+  vintages, and small-town CCRs can amplify a recent trend that may not
+  persist for 25 years. Granville's projection might warrant a sensitivity
+  check (e.g., re-running with a tighter CCR cap or a longer-baseline
+  average).
+
+Method-driven caveats:
+- The interpolation is *linear* between 5-year endpoints, so within each
+  5-year block the trajectory is a straight line by construction (not a
+  modeled annual path). The kinks at 2027 / 2032 / 2037 / 2042 are
+  interpolation artifacts, not modeled inflection points.
+- Annual rescaling to the county total uses a *uniform* per-year factor
+  across all 17 towns, preserving within-year shares while pinning the
+  annual sum.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 6. Per-town summary: 2022 → 2047 baseline
 """),
     code("""

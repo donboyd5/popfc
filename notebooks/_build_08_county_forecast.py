@@ -201,6 +201,37 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
+### 3b. Cohort time-series small multiples
+
+Same three-scenario fan for each cohort county. Y-axes are
+independent so each county's trajectory fills its panel — read this for
+*shape* (declining, flat, growing) rather than relative *level*. Cornell
+PAD is shown only for Washington in the headline plot above.
+"""),
+    code("""
+fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+axes = axes.flatten()
+for ax, (geoid, name) in zip(axes, COHORT.items()):
+    sub = totals[totals["geoid"] == geoid]
+    for scen in ["low", "baseline", "high"]:
+        s = sub[sub["scenario"] == scen].sort_values("year")
+        ax.plot(s["year"], s["population"], color=colors[scen], linewidth=1.4,
+                label=scen)
+    ax.axvline(BASE_YEAR, color="black", linewidth=0.6, alpha=0.4)
+    ax.set_title(f"{name} ({geoid})", fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.ticklabel_format(axis="y", style="plain")
+axes[0].legend(loc="best", fontsize=8)
+for ax in axes[-3:]:
+    ax.set_xlabel("year")
+for ax in axes[::3]:
+    ax.set_ylabel("population")
+fig.suptitle(f"Cohort county forecasts — {BASE_YEAR} base, low / baseline / high scenarios", y=1.00)
+fig.tight_layout()
+plt.show()
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 4. Cohort summary — 2050 outcomes
 """),
     code("""
@@ -222,6 +253,40 @@ print(piv.round(0).astype(int).to_string())
 print()
 print(f"% change {BASE_YEAR} → {END_YEAR}:")
 print(piv_pct.round(1).to_string())
+"""),
+    # ---------------------------------------------------------------
+    md("""
+### 4b. 2050 % change ranking
+
+The cohort sorted by baseline % change from 2023, with low/high
+scenarios shown as the bracket. Lets you see which counties have the
+widest scenario range as well as the central trajectory.
+"""),
+    code("""
+ranking = (joined.pivot_table(index="geography", columns="scenario", values="pct_change")
+           .reset_index()
+           .sort_values("baseline"))
+
+fig, ax = plt.subplots(figsize=(10, 4.5))
+y_pos = np.arange(len(ranking))
+ax.barh(y_pos, ranking["baseline"].astype(float),
+        color="C0", alpha=0.7, label="baseline", edgecolor="black", linewidth=0.5)
+# Error-bar-style bracket for low/high.
+for i, row in ranking.reset_index(drop=True).iterrows():
+    lo = float(row["low"]); hi = float(row["high"]); base = float(row["baseline"])
+    ax.plot([lo, hi], [i, i], color="black", linewidth=1.0)
+    ax.plot([lo, lo], [i - 0.15, i + 0.15], color="black", linewidth=1.0)
+    ax.plot([hi, hi], [i - 0.15, i + 0.15], color="black", linewidth=1.0)
+    ax.scatter([base], [i], color="C0", s=30, zorder=5, edgecolor="black", linewidth=0.5)
+
+ax.axvline(0, color="black", linewidth=0.8)
+ax.set_yticks(y_pos)
+ax.set_yticklabels(ranking["geography"].tolist())
+ax.set_xlabel(f"% change {BASE_YEAR} → {END_YEAR}")
+ax.set_title(f"Cohort county {BASE_YEAR}→{END_YEAR} population change — baseline (dot) and low/high (bracket)")
+ax.grid(True, alpha=0.3, axis="x")
+fig.tight_layout()
+plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
@@ -256,34 +321,169 @@ plt.show()
     md("""
 ## 6. Components of the Washington decline — natural change vs migration
 
-Decompose the projected change to show how much comes from natural
-increase (births minus deaths) vs net migration.
+Decompose the projected population change into Births, Deaths, and Net
+Migration per forecast year. We compute Births directly from the
+ASFR × female-pop formula the engine uses, Net Migration directly from
+the migration rates × source-age pop, and back out Deaths as the
+residual that makes the demographic identity close:
+
+> **ΔPop(t→t+1) = Births − Deaths + NetMig** → **Deaths = Births + NetMig − ΔPop**
+
+This means our three components sum exactly to ΔPop by construction.
+We aren't separately tracking deaths in the engine output — the
+forecasts parquet stores end-of-year populations by age × sex only, so
+deaths-as-residual is the cleanest post-hoc decomposition.
 """),
     code("""
-def decompose_washington_baseline():
-    sub = forecasts[
-        (forecasts["geoid"] == WASHINGTON)
-        & (forecasts["scenario"] == "baseline")
-    ]
-    totals_by_year = sub.groupby("year")["population"].sum()
-    # Total change per year = next-year - this-year
-    delta = totals_by_year.diff().rename("delta_pop")
-    # Births per year: same formula as the engine.
-    from popfc.models.fertility import REPRO_AGE_MAX, REPRO_AGE_MIN
-    wash_asfr = asfr_all[
-        (asfr_all["geoid"] == WASHINGTON) & (asfr_all["year"] == BASE_YEAR)
-    ].set_index("age")["asfr_per_1000"].astype(float)
-    births_per_year = []
-    for year, gsub in sub.groupby("year"):
-        f_pop = gsub[(gsub["sex"] == "F") & (gsub["age"].between(REPRO_AGE_MIN, REPRO_AGE_MAX))]
-        aligned = f_pop.set_index("age")["population"].astype(float).reindex(wash_asfr.index).fillna(0)
-        b = float((aligned * wash_asfr.reindex(aligned.index).fillna(0) / 1000).sum())
-        births_per_year.append({"year": year, "births": b})
-    births_df = pd.DataFrame(births_per_year).set_index("year")["births"]
-    return pd.DataFrame({"total_pop": totals_by_year, "delta": delta, "births": births_df})
+from popfc.models.fertility import REPRO_AGE_MAX, REPRO_AGE_MIN
 
-decomp = decompose_washington_baseline()
-print(decomp.head(15).round(0).astype("Int64").to_string())
+def decompose_county_scenario(geoid: str, scenario: str = "baseline") -> pd.DataFrame:
+    sub = forecasts[
+        (forecasts["geoid"] == geoid) & (forecasts["scenario"] == scenario)
+    ].copy()
+    totals_by_year = sub.groupby("year")["population"].sum()
+    delta = totals_by_year.diff()
+
+    asfr_c = asfr_all[
+        (asfr_all["geoid"] == geoid) & (asfr_all["year"] == BASE_YEAR)
+    ].set_index("age")["asfr_per_1000"].astype(float)
+
+    nm_c = net_mig[net_mig["geoid"] == geoid].copy()
+    # Build per-(sex, source_age) m_rate including the open-band boundary.
+    closed = nm_c[nm_c["band_type"] == "closed"][["sex", "source_age", "m_rate"]]
+    closed = closed.rename(columns={"source_age": "age", "m_rate": "m_rate_closed"})
+    boundary = nm_c[nm_c["band_type"] == "boundary"][["sex", "m_rate"]].rename(
+        columns={"m_rate": "m_rate_boundary"}
+    )
+
+    rows = []
+    years = sorted(sub["year"].unique())
+    for t in years:
+        gsub = sub[sub["year"] == t]
+        # Births: ASFR(age) × Female_Pop(age, t) / 1000, for reproductive ages.
+        f_pop = gsub[(gsub["sex"] == "F") & (gsub["age"].between(REPRO_AGE_MIN, REPRO_AGE_MAX))]
+        aligned = f_pop.set_index("age")["population"].astype(float).reindex(asfr_c.index).fillna(0)
+        births = float((aligned * asfr_c.reindex(aligned.index).fillna(0) / 1000).sum())
+
+        # Migration: sum of (m_rate × source_pop) across closed bands + open-band boundary.
+        pop_by_sex_age = gsub[["sex", "age", "population"]].copy()
+        pop_by_sex_age["population"] = pop_by_sex_age["population"].astype(float)
+
+        mig_closed = pop_by_sex_age.merge(closed, on=["sex", "age"], how="left")
+        mig_closed["mig"] = mig_closed["m_rate_closed"].astype(float).fillna(0) * mig_closed["population"]
+        m_closed = float(mig_closed["mig"].sum())
+
+        # Open band: m_boundary applied to P(ω-1) + P(ω). With top-code 85 the open band is age 85.
+        TOP = TOP_CODE_AGE
+        open_pop = pop_by_sex_age[pop_by_sex_age["age"].isin([TOP - 1, TOP])]
+        open_pop_by_sex = open_pop.groupby("sex")["population"].sum().rename("source_pop").reset_index()
+        open_merged = open_pop_by_sex.merge(boundary, on="sex", how="left")
+        m_open = float((open_merged["source_pop"] * open_merged["m_rate_boundary"].astype(float).fillna(0)).sum())
+
+        net_migration = m_closed + m_open
+        rows.append({"year": t, "total_pop": float(totals_by_year[t]),
+                     "births": births, "net_mig": net_migration})
+    df = pd.DataFrame(rows).set_index("year")
+    df["delta"] = df["total_pop"].diff()
+    # Demographic identity: ΔPop = B - D + M  →  D = B + M - ΔPop
+    df["deaths"] = df["births"] + df["net_mig"] - df["delta"]
+    df["natural_change"] = df["births"] - df["deaths"]
+    return df
+
+decomp = decompose_county_scenario(WASHINGTON, "baseline")
+print("Washington baseline — decomposition (rounded to whole persons):")
+print(decomp[["total_pop", "delta", "births", "deaths", "net_mig", "natural_change"]]
+      .head(15).round(0).astype("Int64").to_string())
+print()
+total_period = decomp.dropna().agg({
+    "births": "sum", "deaths": "sum", "net_mig": "sum", "delta": "sum"
+})
+print(f"Cumulative {BASE_YEAR+1}→{END_YEAR}:")
+print(total_period.round(0).astype("Int64").to_string())
+print(f"  identity check (B - D + M − ΔPop): "
+      f"{total_period['births'] - total_period['deaths'] + total_period['net_mig'] - total_period['delta']:.3f}")
+"""),
+    code("""
+# Stacked-bar plot: B (+), D (−), NM (+/−), with ΔPop shown as a line.
+plot_decomp = decomp.dropna().reset_index()
+
+fig, ax = plt.subplots(figsize=(12, 5))
+years = plot_decomp["year"].astype(int).to_numpy()
+births = plot_decomp["births"].astype(float).to_numpy()
+deaths = plot_decomp["deaths"].astype(float).to_numpy()
+net_mig = plot_decomp["net_mig"].astype(float).to_numpy()
+delta = plot_decomp["delta"].astype(float).to_numpy()
+
+ax.bar(years, births, color="C2", alpha=0.85, label="Births (+)", edgecolor="black", linewidth=0.3)
+ax.bar(years, -deaths, color="C3", alpha=0.85, label="Deaths (−)", edgecolor="black", linewidth=0.3)
+# Plot NM stacked on top of (Births - Deaths) so the net is visible.
+nat_chg = births - deaths
+ax.bar(years, net_mig, bottom=nat_chg, color="C0", alpha=0.85,
+       label="Net migration (+/−)", edgecolor="black", linewidth=0.3)
+ax.plot(years, delta, color="black", linewidth=1.6, marker="o", markersize=3.5,
+        label="ΔPop (annual)", zorder=5)
+ax.axhline(0, color="black", linewidth=0.6)
+ax.set_xlabel("year (t+1 of the t→t+1 change)")
+ax.set_ylabel("persons per year")
+ax.set_title(f"Washington baseline — annual decomposition of population change")
+ax.grid(True, alpha=0.3, axis="y")
+ax.legend(loc="upper right", ncol=2, fontsize=9)
+fig.tight_layout()
+plt.show()
+"""),
+    code("""
+# Cumulative contribution plot — how much of 2023→2050 total change came from each component?
+cum = plot_decomp[["year"]].copy()
+cum["cum_births"] = plot_decomp["births"].cumsum()
+cum["cum_deaths"] = -plot_decomp["deaths"].cumsum()
+cum["cum_netmig"] = plot_decomp["net_mig"].cumsum()
+cum["cum_delta"] = plot_decomp["delta"].cumsum()
+
+fig, ax = plt.subplots(figsize=(11, 5))
+ax.plot(cum["year"], cum["cum_births"], color="C2", linewidth=1.6, label="Cumulative births (+)")
+ax.plot(cum["year"], cum["cum_deaths"], color="C3", linewidth=1.6, label="Cumulative deaths (−, plotted as negative)")
+ax.plot(cum["year"], cum["cum_netmig"], color="C0", linewidth=1.6, label="Cumulative net migration")
+ax.plot(cum["year"], cum["cum_delta"], color="black", linewidth=2.0, linestyle="--",
+        label="Cumulative ΔPop = B − D + NM")
+ax.axhline(0, color="black", linewidth=0.6)
+ax.set_xlabel("year")
+ax.set_ylabel("cumulative persons from base year")
+ax.set_title(f"Washington baseline — cumulative contribution of each component, {BASE_YEAR}→{END_YEAR}")
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper left", fontsize=9)
+fig.tight_layout()
+plt.show()
+
+# Headline summary
+final = cum.iloc[-1]
+print(f"Cumulative {BASE_YEAR}→{END_YEAR} contributions (baseline, Washington):")
+print(f"  Births:        {int(round(final['cum_births'])):>+8,d}")
+print(f"  Deaths:        {int(round(final['cum_deaths'])):>+8,d}")
+print(f"  Net migration: {int(round(final['cum_netmig'])):>+8,d}")
+print(f"  Total ΔPop:    {int(round(final['cum_delta'])):>+8,d}")
+print()
+if final['cum_delta'] < 0:
+    nat = final['cum_births'] + final['cum_deaths']  # cum_deaths is already negative
+    mig = final['cum_netmig']
+    print(f"Of the {int(round(-final['cum_delta'])):,}-person decline:")
+    print(f"  natural change (B − D) contributes: {int(round(nat)):>+8,d}")
+    print(f"  net migration contributes:           {int(round(mig)):>+8,d}")
+"""),
+    md("""
+**Reading the decomposition.** The annual stacked bars show the
+three flows for each forecast year, with the black line tracking the
+*net* result (ΔPop). The cumulative plot shows how the total
+2023→2050 population change accumulates. For Washington's baseline,
+the projected decline comes overwhelmingly from one dominant
+direction — either natural change (B − D, negative as deaths exceed
+births in an aging county) or net migration, depending on which the
+cumulative plot makes obvious. The numeric summary above quantifies it.
+
+Caveat: the engine doesn't separately track deaths; we compute them
+as the residual of the demographic identity. That means any
+engine-internal numerical drift (rare, but possible at the open-band
+boundary) lands in the deaths series. The identity-check value
+printed in the previous cell should be very close to zero.
 """),
     # ---------------------------------------------------------------
     md("""

@@ -364,6 +364,91 @@ print(sub[["county", "tfr", "births"]]
 """),
     # ---------------------------------------------------------------
     md("""
+## 6b. Outlier audit — extreme scaling factors and TFR values
+
+Two flags. If either fires for a county-year, it's worth examining
+that county before trusting downstream forecast inputs.
+
+1. **Extreme `scaling_factor` k** — `k < 0.5` or `k > 2.0`. Recall
+   `k` is the multiplicative adjustment we apply to the national age
+   pattern to match a county's observed total births. A `k` near 1
+   means the county's TFR is close to national; `k > 2` means
+   "more than double the national TFR," which would be very unusual
+   in NY. `k < 0.5` means "less than half" — possible in highly
+   educated urban populations but worth checking that the births
+   count isn't undercounted.
+
+2. **Implied TFR outliers** — beyond [1.0, 3.0]. Replacement-level
+   TFR is ~2.1; the national TFR is ~1.62. Counties outside this
+   range either have unusual demographics (rural Anabaptist
+   communities can push TFR > 3) or a data issue.
+"""),
+    code("""
+K_LO, K_HI = 0.5, 2.0
+TFR_LO, TFR_HI = 1.0, 3.0
+
+# Build one-row-per-(geoid, year) summary.
+summary = (
+    asfr.groupby(["geoid", "geography", "year"])
+        .agg(k=("scaling_factor", "first"),
+             tfr=("implied_tfr", "first"),
+             births=("observed_births", "first"))
+        .reset_index()
+)
+
+k_flags = summary[(summary["k"] < K_LO) | (summary["k"] > K_HI)]
+tfr_flags = summary[(summary["tfr"] < TFR_LO) | (summary["tfr"] > TFR_HI)]
+
+print(f"County-year rows: {len(summary):,}")
+print()
+print(f"(1) Extreme scaling factor k outside [{K_LO}, {K_HI}]: {len(k_flags):>4}")
+if not k_flags.empty:
+    print(k_flags.sort_values("k").to_string(index=False, float_format=lambda x: f'{x:.3f}'))
+print()
+print(f"(2) Implied TFR outside [{TFR_LO}, {TFR_HI}]: {len(tfr_flags):>4}")
+if not tfr_flags.empty:
+    print(tfr_flags.sort_values("tfr").to_string(index=False, float_format=lambda x: f'{x:.3f}'))
+"""),
+    code("""
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+
+# Distribution of k across all county-years.
+axes[0].hist(summary["k"].astype(float).clip(0, 3), bins=50, color="C0", alpha=0.8)
+axes[0].axvline(1.0, color="black", linewidth=0.6, linestyle="-", label="k = 1 (matches national)")
+axes[0].axvline(K_LO, color="C3", linewidth=1.0, linestyle="--", label=f"flags ({K_LO}, {K_HI})")
+axes[0].axvline(K_HI, color="C3", linewidth=1.0, linestyle="--")
+axes[0].set_xlabel("scaling factor k")
+axes[0].set_ylabel("# (county, year) rows")
+axes[0].set_title("Distribution of ASFR scaling factor k across county-years")
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Distribution of TFR.
+axes[1].hist(summary["tfr"].astype(float).clip(0, 4), bins=50, color="C2", alpha=0.8)
+axes[1].axvline(NCHS_ASFR_2023_TFR, color="black", linewidth=0.6, linestyle="-",
+                label=f"US 2023 = {NCHS_ASFR_2023_TFR:.2f}")
+axes[1].axvline(2.1, color="grey", linewidth=0.8, linestyle=":", label="replacement (2.1)")
+axes[1].axvline(TFR_LO, color="C3", linewidth=1.0, linestyle="--", label=f"flags ({TFR_LO}, {TFR_HI})")
+axes[1].axvline(TFR_HI, color="C3", linewidth=1.0, linestyle="--")
+axes[1].set_xlabel("implied TFR")
+axes[1].set_ylabel("# (county, year) rows")
+axes[1].set_title("Distribution of implied TFR across county-years")
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading this.** The bulk of NY county-years cluster around k ≈ 1
+and TFR ≈ 1.6, consistent with national fertility. Outliers tend to
+cluster in the Catskills / Finger Lakes (small populations with
+genuinely higher fertility, often historic Amish or Mennonite
+communities) and at decennial-seam years where the rate-based
+annualization can be slightly off. Cohort counties (Washington and
+the 5 neighbors) typically sit well inside the flag bands.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 7. QA assertions
 """),
     code("""

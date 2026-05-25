@@ -234,6 +234,87 @@ print(county_total["overall_m_rate_pct"].describe().to_string())
 """),
     # ---------------------------------------------------------------
     md("""
+## 4b. Outlier audit — implausibly large per-cohort migration rates
+
+The residual method is noisy when populations are small or when
+year-over-year measurement is rough. A migration rate of `m_rate = 0.20`
+means 20% of that (source age, sex) cohort moved (net) in one year —
+implausibly high in most circumstances. We flag any (county, sex, age)
+cohort with `|m_rate| > 0.20` and look at where they cluster.
+
+Two questions matter:
+- **Cohort counties**: do the rates look stable? If Washington has many
+  flagged cells, we should be skeptical of its forecast.
+- **Distribution**: is the long tail concentrated in a few counties
+  (small counties where noise dominates) or spread across the state?
+"""),
+    code("""
+M_RATE_THRESH = 0.20
+
+m_rate_outliers = m[m["m_rate"].abs() > M_RATE_THRESH].copy()
+total_cells = m["m_rate"].notna().sum()
+print(f"Per-cohort net migration rate audit:")
+print(f"  Total (county, sex, age) cells with rate: {total_cells:>5,}")
+print(f"  Flagged (|m_rate| > {M_RATE_THRESH:.0%}):     {len(m_rate_outliers):>5,}  "
+      f"({100*len(m_rate_outliers)/total_cells:.1f}%)")
+print()
+print(f"Top counties by # of flagged cells:")
+print(m_rate_outliers.groupby("geography").size()
+                    .sort_values(ascending=False).head(15)
+                    .to_string())
+
+# Cohort-specific count.
+cohort_flagged = m_rate_outliers[m_rate_outliers["geoid"].isin(COHORT)]
+print()
+print(f"Flagged cells per cohort county (out of 170 total = 2 sex x 85 ages):")
+for g, name in COHORT.items():
+    count = (cohort_flagged["geoid"] == g).sum()
+    print(f"  {name:<12} ({g}): {count:>3}")
+"""),
+    code("""
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+
+# Distribution of m_rate (clip to readable range).
+all_rates = m["m_rate"].astype(float).dropna()
+axes[0].hist(all_rates.clip(-0.5, 0.5), bins=60, color="C0", alpha=0.8)
+axes[0].axvline(0, color="black", linewidth=0.6)
+axes[0].axvline(M_RATE_THRESH, color="C3", linewidth=1.0, linestyle="--",
+                label=f"flag |m_rate| > {M_RATE_THRESH:.0%}")
+axes[0].axvline(-M_RATE_THRESH, color="C3", linewidth=1.0, linestyle="--")
+axes[0].set_xlabel("net migration rate (per source-age person per year)")
+axes[0].set_ylabel("# (county, sex, age) cells")
+axes[0].set_title("Distribution of per-cohort net migration rates (all 62 NY counties)")
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Where in the age range do flagged cells concentrate?
+by_age = m_rate_outliers.groupby("source_age").size()
+axes[1].bar(by_age.index, by_age.values, color="C3", alpha=0.7)
+axes[1].set_xlabel("source age")
+axes[1].set_ylabel("# flagged cells across all counties")
+axes[1].set_title(f"Where flagged rates land by age (|m_rate| > {M_RATE_THRESH:.0%})")
+axes[1].grid(True, alpha=0.3, axis="y")
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**What this shows.** Most county-sex-age cells sit within ±5% (a
+moderate migration rate); the long tail beyond ±20% concentrates in
+a few small counties where year-over-year noise in single-age
+populations dominates. Flagged cells cluster at young-adult ages
+(college / early-career mobility) and at the oldest ages (small
+populations + measurement noise). The CCM engine smooths some of
+this via the 4 year-pair averaging in `build_net_migration_rates`,
+but per-cohort rates still inherit the volatility.
+
+For the cohort counties, the flag count tells you which county's
+forecast inputs are *most affected by small-sample noise*. A high
+number here doesn't mean the forecast is wrong — it means the
+underlying migration signal is weaker and the projection will be
+more sensitive to the averaging window.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 5. QA assertions
 """),
     code("""

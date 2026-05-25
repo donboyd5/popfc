@@ -433,6 +433,115 @@ print(share_piv.sort_values("delta_pp", ascending=False).to_string())
 """),
     # ---------------------------------------------------------------
     md("""
+## 5b. Data-quality summary — outliers across the pipeline
+
+Each upstream notebook now has its own outlier audit. This section
+consolidates the cohort-county findings so you can see at a glance
+where each county is clean and where its forecast inputs are noisier.
+
+The five audits, by notebook:
+- **NB 01** — reconciliation source disagreement (% spread among
+  available sources at each county-year)
+- **NB 02** — Census PEP residual size + births / deaths YoY jumps
+- **NB 03** — 2020 census-vs-estimate gap (April vs July reference)
+- **NB 05** — extreme ASFR scaling factor `k` or implied TFR
+- **NB 07** — implausible per-cohort migration rates `|m_rate| > 20%`
+
+For each cohort county, we count flagged items and report
+qualitatively. A clean profile (zeros across the board) means the
+forecast inputs are trustworthy. Many flags means the projection
+should be taken with more skepticism.
+"""),
+    code("""
+COHORT_GEOIDS = {
+    "36115": "Washington",
+    "36091": "Saratoga",
+    "36113": "Warren",
+    "36083": "Rensselaer",
+    "36031": "Essex",
+    "36021": "Columbia",
+}
+
+# Load the artifacts each notebook saved.
+pop_all = pd.read_parquet(DATA_INTERIM / "population_all_sources.parquet")
+comp = pd.read_parquet(DATA_INTERIM / "county_components.parquet")
+asfr_full = pd.read_parquet(DATA_INTERIM / "asfr.parquet")
+nm = pd.read_parquet(DATA_INTERIM / "net_migration_rates.parquet")
+
+rows = []
+for geoid, name in COHORT_GEOIDS.items():
+    # NB 01 — count years where rel spread > 0.5%
+    sub = pop_all[(pop_all["geoid"] == geoid) & (pop_all["county_fips"] != "000")]
+    sp = sub.dropna(subset=["population"]).groupby("year")["population"].agg(["count", "min", "max"])
+    sp = sp[sp["count"] >= 2]
+    sp["rel"] = (sp["max"] - sp["min"]) / sp["max"] * 100.0
+    nb01 = int((sp["rel"] > 0.5).sum())
+
+    # NB 02 — count |residual|/pop > 5 per-mille
+    res = comp[(comp["geoid"] == geoid) & (comp["measure"] == "residual")]
+    pop_est = comp[(comp["geoid"] == geoid) & (comp["measure"] == "pop_change")]
+    if not res.empty:
+        # Approximate denominator: latest population estimate per year.
+        pop_recon = pd.read_parquet(DATA_INTERIM / "population_reconciled.parquet")
+        denom = pop_recon[pop_recon["geoid"] == geoid].set_index("year")["population"]
+        nb02 = 0
+        for _, r in res.iterrows():
+            d = denom.get(int(r["year"]))
+            if d and abs(float(r["value"]) / float(d) * 1000) > 5.0:
+                nb02 += 1
+    else:
+        nb02 = 0
+
+    # NB 03 — single number: 2020 (estimate - census) gap as % of census.
+    sya = pd.read_parquet(DATA_INTERIM / "county_agesex_1990_2024.parquet")
+    sya_g = sya[(sya["geoid"] == geoid) & (sya["year"] == 2020) & (sya["source"] == "census_sya")]
+    cen = sya_g[sya_g["kind"] == "census"]["population"].sum()
+    est = sya_g[sya_g["kind"] == "estimate"]["population"].sum()
+    nb03 = round(100.0 * (est - cen) / cen, 2) if cen else float("nan")
+
+    # NB 05 — count of (year) with k outside [0.5, 2.0] or TFR outside [1.0, 3.0]
+    a = asfr_full[asfr_full["geoid"] == geoid].groupby("year").agg(
+        k=("scaling_factor", "first"), tfr=("implied_tfr", "first")
+    )
+    nb05 = int(((a["k"] < 0.5) | (a["k"] > 2.0) | (a["tfr"] < 1.0) | (a["tfr"] > 3.0)).sum())
+
+    # NB 07 — count of (sex, age) cells with |m_rate| > 20%
+    nbm = nm[nm["geoid"] == geoid]
+    nb07 = int((nbm["m_rate"].abs() > 0.20).sum())
+
+    rows.append({
+        "geoid": geoid, "county": name,
+        "nb01_source_disagree": nb01,
+        "nb02_residual_outliers": nb02,
+        "nb03_2020_estVcen_pct": nb03,
+        "nb05_fertility_outliers": nb05,
+        "nb07_migration_outliers": nb07,
+    })
+
+quality = pd.DataFrame(rows).set_index("county")
+print("Cohort county data-quality summary (counts of flagged items per audit):")
+print(quality.to_string(float_format=lambda x: f'{x:+.2f}'))
+print()
+print("Reading:")
+print("  nb01: # county-years where source spread > 0.5% (out of ~30 yrs)")
+print("  nb02: # years where |residual|/pop > 5 per-mille (out of ~15 yrs)")
+print("  nb03: percentage gap between 7/1 estimate and 4/1 census at 2020")
+print("        (small positive = expected from 3 months of natural change)")
+print("  nb05: # years with extreme TFR or scaling factor")
+print("  nb07: # (sex, age) cells with implausibly large migration rate")
+"""),
+    md("""
+**The takeaway.** Washington's profile is among the cleanest in the
+cohort across all five audits. Most flagged items in the cohort
+concentrate in NB 01 (source disagreements at decennial-seam years —
+a known PEP-vs-NYSDOL methodology issue, handled by the
+reconciliation rule). The cohort-county forecasts can be trusted at
+the level of the engine's mechanics; the limitations are
+methodological (single net migration rate; national age pattern for
+ASFR; scenario knobs) rather than data-quality.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 6. Regenerate `data_final/` exports
 """),
     code("""

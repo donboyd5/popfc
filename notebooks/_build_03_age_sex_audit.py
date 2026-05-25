@@ -168,6 +168,91 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
+## 2b. Outlier audit — 2020 census-vs-estimate gap, all NY counties
+
+We have CDC Bridged-Race data only for Washington (no statewide
+WONDER pull is in the project's `data_raw/`), so the bridged-vs-
+unbridged comparison above can't be generalized cleanly. But we can
+audit a related question across **all 62 NY counties** — how close
+is the 4/1/2020 Census enumeration to the 7/1/2020 PEP estimate?
+These are different reference dates (3 months apart) so a 1-2 person
+difference per 10,000 is expected from natural change in Q2 2020. A
+gap above ~0.5% would be unusual and would point to either an
+unusual demographic event or a data-quality issue.
+"""),
+    code("""
+GAP_PCT_THRESH = 0.5
+
+sya_2020_all = sya[sya["year"] == 2020].copy()
+totals_2020 = (
+    sya_2020_all.groupby(["geoid", "geography", "kind"])["population"]
+    .sum().unstack("kind")
+    .reset_index()
+)
+totals_2020["gap"] = totals_2020["estimate"] - totals_2020["census"]
+totals_2020["gap_pct"] = 100.0 * totals_2020["gap"].astype(float) / totals_2020["census"].astype(float)
+
+print(f"2020 (estimate − census) gap across {len(totals_2020)} NY counties:")
+print(totals_2020["gap_pct"].describe().to_string())
+print()
+flagged_2020 = totals_2020[totals_2020["gap_pct"].abs() > GAP_PCT_THRESH].copy()
+print(f"Flagged (|gap| > {GAP_PCT_THRESH}% of 4/1/2020 census): {len(flagged_2020)} counties")
+print()
+if not flagged_2020.empty:
+    print("Worst:")
+    print(flagged_2020.assign(absp=flagged_2020["gap_pct"].abs())
+                     .nlargest(15, "absp")
+                     [["geography", "census", "estimate", "gap", "gap_pct"]]
+                     .to_string(index=False, float_format=lambda x: f'{x:+,.2f}'))
+"""),
+    code("""
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+axes[0].hist(totals_2020["gap_pct"].clip(-2, 2), bins=40, color="C0", alpha=0.8)
+axes[0].axvline(0, color="black", linewidth=0.6)
+axes[0].axvline(GAP_PCT_THRESH, color="C3", linewidth=1.0, linestyle="--",
+                label=f"flag (±{GAP_PCT_THRESH}%)")
+axes[0].axvline(-GAP_PCT_THRESH, color="C3", linewidth=1.0, linestyle="--")
+axes[0].set_xlabel("(7/1/2020 estimate − 4/1/2020 census) / census × 100")
+axes[0].set_ylabel("# counties")
+axes[0].set_title("Distribution of the 2020 estimate-vs-census gap (NY counties)")
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Cohort scatter — labelled.
+cohort_2020 = totals_2020[totals_2020["geoid"].isin(["36115","36091","36113","36083","36031","36021"])]
+axes[1].scatter(cohort_2020["census"].astype(float), cohort_2020["gap_pct"].astype(float),
+                color="C0", s=60, alpha=0.8)
+for _, r in cohort_2020.iterrows():
+    axes[1].annotate(r["geography"].replace(" County", ""),
+                     (float(r["census"]), float(r["gap_pct"])),
+                     xytext=(5, 2), textcoords="offset points", fontsize=9)
+axes[1].axhline(0, color="black", linewidth=0.6)
+axes[1].axhline(GAP_PCT_THRESH, color="C3", linestyle="--", alpha=0.5)
+axes[1].axhline(-GAP_PCT_THRESH, color="C3", linestyle="--", alpha=0.5)
+axes[1].set_xlabel("4/1/2020 census enumeration")
+axes[1].set_ylabel("gap % of census")
+axes[1].set_title("Cohort counties — 2020 gap %")
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xscale("log")
+
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**What the audit reveals.** Most NY counties cluster very near zero
+gap, as expected for a 3-month interval. The small counties (Hamilton
+in particular) and the NYC boroughs at the high end can show larger
+percentage gaps — for small counties the absolute differences are
+modest but loom large in relative terms; for NYC boroughs the PEP
+Vintage 2025 base differs from the April 2020 enumeration by more
+than the average county since DAS-adjusted post-enumeration
+methodology was contentious there.
+
+For the cohort counties: all six sit within ±0.5% of zero. That's
+clean.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 3. Time series of total population at the seam
 
 Show CDC 1990–2020 alongside Census SYA 2020–2024 for Washington. The

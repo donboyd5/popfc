@@ -223,6 +223,87 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
+## 4b. Outlier audit — statewide source disagreements
+
+Where do the available sources disagree by more than expected? For every
+NY county × year with ≥ 2 source values covering that year, compute the
+spread (max − min) and the relative spread as a fraction of the max
+value. A relative spread > 0.5% (~300 people in a 60,000-pop county)
+is flagged — usually it indicates either a Census vintage revision or
+a NYSDOL methodology change.
+
+This is a data-quality check, not a forecast input. The reconciliation
+rule (next section) picks one source per row, so the spreads here are
+informational. But if a county has wide spreads year after year, that's
+worth knowing before we trust its forecast.
+"""),
+    code("""
+def spread_all(pop_all_df: pd.DataFrame, county_only: bool = True) -> pd.DataFrame:
+    df = pop_all_df.copy()
+    if county_only:
+        df = df[df["county_fips"] != "000"]
+    grouped = (
+        df.dropna(subset=["population"])
+          .groupby(["geoid", "geography", "year"])["population"]
+          .agg(["count", "min", "max"])
+          .reset_index()
+          .rename(columns={"count": "n_values"})
+    )
+    grouped = grouped[grouped["n_values"] >= 2].copy()
+    grouped["spread"] = grouped["max"] - grouped["min"]
+    grouped["rel_spread_pct"] = 100.0 * grouped["spread"] / grouped["max"]
+    return grouped
+
+spread_state = spread_all(pop_all)
+THRESH_PCT = 0.5
+flagged = spread_state[spread_state["rel_spread_pct"] > THRESH_PCT].copy()
+print(f"Statewide source-disagreement audit:")
+print(f"  county-years with >=2 source values: {len(spread_state):>5,}")
+print(f"  flagged (rel spread > {THRESH_PCT}% of max): {len(flagged):>5,}  "
+      f"({100*len(flagged)/len(spread_state):.1f}%)")
+print()
+print(f"Top 20 worst by relative spread:")
+print(flagged.sort_values("rel_spread_pct", ascending=False)
+            .head(20)[["geography", "year", "n_values", "min", "max", "spread", "rel_spread_pct"]]
+            .to_string(index=False, float_format=lambda x: f'{x:,.2f}'))
+"""),
+    # ---------------------------------------------------------------
+    code("""
+# Distribution + per-county count of flagged years.
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+axes[0].hist(spread_state["rel_spread_pct"].clip(upper=5.0), bins=50, color="C0", alpha=0.8)
+axes[0].axvline(THRESH_PCT, color="C3", linewidth=1.2, linestyle="--",
+                label=f"flag threshold ({THRESH_PCT}%)")
+axes[0].set_xlabel("relative spread (max - min) / max, %")
+axes[0].set_ylabel("count of county-years")
+axes[0].set_title("Distribution of source disagreement across NY counties × years")
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Per-county flagged count.
+per_county = (
+    flagged.groupby("geography").size().sort_values(ascending=False).head(15)
+)
+axes[1].barh(per_county.index[::-1], per_county.values[::-1], color="C3", alpha=0.7)
+axes[1].set_xlabel(f"# years flagged (rel spread > {THRESH_PCT}%)")
+axes[1].set_title("Counties with the most flagged years (top 15)")
+axes[1].grid(True, alpha=0.3, axis="x")
+
+fig.tight_layout()
+plt.show()
+
+# Surface Washington + cohort counties specifically.
+cohort_flagged = flagged[flagged["geoid"].isin(COHORT)]
+if not cohort_flagged.empty:
+    print(f"\\nFlagged years in the cohort (Washington + 5 neighbors):")
+    print(cohort_flagged.sort_values(["geography", "year"])
+                       [["geography", "year", "n_values", "min", "max", "rel_spread_pct"]]
+                       .to_string(index=False, float_format=lambda x: f'{x:,.2f}'))
+else:
+    print(f"\\nNo cohort-county years flagged at the {THRESH_PCT}% threshold.")
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 5. Handle PEP vintage overlap
 
 The three Census PEP files overlap at decennial years (e.g., 2020 appears in

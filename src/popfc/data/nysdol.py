@@ -30,11 +30,37 @@ from popfc.data._common import (
 )
 from popfc.paths import NYSDOL_DIR
 
-# Default file — update when a newer vintage is dropped in.
-DEFAULT_NYSDOL_ANNUAL = (
-    NYSDOL_DIR
-    / "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970_20260524.csv"
-)
+# Filename conventions for the NYSDOL annual CSV. The download module writes
+# files matching the new convention; this loader prefers it but falls back
+# to legacy retrieval-only filenames if that's all that's on disk.
+#
+#   Annual_..._beginning_1970_d<YYYYMMDD>_r<YYYYMMDD>.csv   (new)
+#     - d<YYYYMMDD>: dataset publication date (data.ny.gov rowsUpdatedAt)
+#     - r<YYYYMMDD>: our retrieval date
+#   Annual_..._beginning_1970_<YYYYMMDD>.csv                (legacy)
+#     - <YYYYMMDD>: retrieval date only; publication date unknown
+_NYSDOL_BASE = "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970"
+
+
+def _default_nysdol_path() -> Path:
+    """Locate the latest NYSDOL annual CSV on disk; prefer new-format filenames."""
+    new_fmt = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE}_d*_r*.csv"))
+    if new_fmt:
+        return new_fmt[-1]
+    legacy = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE}_*.csv"))
+    if legacy:
+        return legacy[-1]
+    # Fall back to a non-existent path so the caller hits a clear FileNotFoundError.
+    return NYSDOL_DIR / f"{_NYSDOL_BASE}_NOT_DOWNLOADED.csv"
+
+
+# Back-compat alias: existing imports of DEFAULT_NYSDOL_ANNUAL still work, but
+# they now resolve to whatever file is currently on disk rather than a fixed
+# date string baked into source.
+def __getattr__(name: str):  # PEP 562 lazy module attribute
+    if name == "DEFAULT_NYSDOL_ANNUAL":
+        return _default_nysdol_path()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Map NYSDOL's `program_type` strings to our canonical `kind` values.
 # Labels observed in the 2025-04-20 vintage:
@@ -54,11 +80,25 @@ _PROGRAM_KIND: dict[str, str] = {
 
 
 def _derive_vintage(path: Path) -> str:
-    """Extract YYYYMMDD from filename and format as 'nysdol_YYYY-MM-DD'."""
-    m = re.search(r"(\d{8})", path.stem)
-    if m:
-        d = m.group(1)
+    """Return the dataset's vintage tag.
+
+    Reads the data-publication date (preferred) or the retrieval date (fallback)
+    from the filename. Returns:
+      - ``nysdol_YYYY-MM-DD`` when the filename carries an explicit ``d<YYYYMMDD>``
+        component (data-publication date per data.ny.gov metadata).
+      - ``nysdol_retrieved_YYYY-MM-DD`` when only a single date is present in the
+        filename (legacy convention; we know when WE downloaded, not when the
+        dataset was published).
+      - ``nysdol_unknown`` if neither pattern matches.
+    """
+    m_pub = re.search(r"_d(\d{8})(?:_r\d{8})?", path.stem)
+    if m_pub:
+        d = m_pub.group(1)
         return f"nysdol_{d[:4]}-{d[4:6]}-{d[6:8]}"
+    m_legacy = re.search(r"(\d{8})", path.stem)
+    if m_legacy:
+        d = m_legacy.group(1)
+        return f"nysdol_retrieved_{d[:4]}-{d[4:6]}-{d[6:8]}"
     return "nysdol_unknown"
 
 
@@ -79,7 +119,7 @@ def load_nysdol_annual(
     -------
     DataFrame with POP_LONG_COLUMNS schema.
     """
-    path = Path(path) if path is not None else DEFAULT_NYSDOL_ANNUAL
+    path = Path(path) if path is not None else _default_nysdol_path()
     vintage = vintage or _derive_vintage(path)
 
     # String-first read: keeps raw values visible and flags coercion failures

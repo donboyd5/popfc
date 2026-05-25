@@ -42,6 +42,27 @@ This is standard small-area demographic practice: single-year county ASFRs
 are too noisy to estimate directly, but the national age pattern is stable
 and the scaling target (total births) is observed cleanly.
 
+### What "national pattern, local level" means concretely
+
+The **age pattern** is the *shape* of fertility across maternal ages —
+the relative fraction of total births that comes from women aged 20 vs 25
+vs 30 vs 35, etc. The shape is broadly similar across populations: a
+single hump centered in the late 20s / early 30s in modern US fertility.
+We borrow this shape from NCHS.
+
+The **level** is the overall *quantity* of fertility — captured by TFR
+(the area under the ASFR curve). We do NOT borrow the national level; we
+recompute it for each county-year by scaling the whole shape so the
+implied birth count exactly matches the observed total births.
+
+Why not estimate the age pattern locally too? Washington County has
+~545 births per year. Spread across the 30 reproductive ages 15-44
+that's an average of 18 births per single age — far too few to fit a
+reliable per-age rate. NCHS's national reference draws from millions of
+births and gives a precisely-estimated curve. Cornell PAD takes the same
+approach for the same reason. The methodology book has more on why this
+is the standard small-area choice (see `docs/methodology.md`).
+
 ## Annual births: rate-based, not raw count
 
 Census PEP publishes both `births` (count) and `rate_births` (births per

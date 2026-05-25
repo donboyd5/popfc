@@ -180,8 +180,21 @@ print(pivot.round(0).astype(int).to_string())
 pad = load_cornell_pad()["totals"]
 pad_wash = pad[pad["geoid"] == WASHINGTON]
 
+# Historical context — ~10 years of reconciled history before the base year
+# so the forecast curves are read against the recent trajectory, not in
+# isolation. HIST_START_YEAR controls how much pre-forecast history to show.
+HIST_START_YEAR = 2015
+SPECULATIVE_AFTER = 2035
+historical = pd.read_parquet(DATA_INTERIM / "population_reconciled.parquet")
+wash_hist = historical[(historical["geoid"] == WASHINGTON)
+                       & (historical["year"] >= HIST_START_YEAR)
+                       & (historical["year"] <= BASE_YEAR)].sort_values("year")
+
 fig, ax = plt.subplots(figsize=(11, 5))
 colors = {"baseline": "C0", "low": "C3", "high": "C2"}
+ax.plot(wash_hist["year"], wash_hist["population"],
+        color="black", linewidth=1.8, marker="o", markersize=3,
+        label=f"Historical (reconciled, {HIST_START_YEAR}-{BASE_YEAR})")
 for scen, sub in wash.groupby("scenario"):
     sub = sub.sort_values("year")
     ax.plot(sub["year"], sub["population"], marker="o", markersize=2,
@@ -191,9 +204,16 @@ ax.plot(pad_wash["year"], pad_wash["population"], marker="s", markersize=3,
 ax.axvline(BASE_YEAR, color="black", linewidth=0.6, alpha=0.4)
 ax.text(BASE_YEAR + 0.3, ax.get_ylim()[1] * 0.98, "base year",
         ha="left", va="top", fontsize=9, color="black")
+# Shade and annotate the post-2035 region where projections are progressively
+# more speculative — readers should weight near-term values more.
+ax.axvspan(SPECULATIVE_AFTER, 2050, color="grey", alpha=0.06, zorder=0)
+ax.axvline(SPECULATIVE_AFTER, color="grey", linestyle=":", linewidth=0.8, alpha=0.7)
+ax.text(SPECULATIVE_AFTER + 0.2, ax.get_ylim()[0] + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]),
+        "more speculative beyond 2035",
+        ha="left", va="bottom", fontsize=8, color="grey", style="italic")
 ax.set_xlabel("year")
 ax.set_ylabel("population")
-ax.set_title(f"Washington County forecast — {BASE_YEAR} base, scenarios + Cornell PAD")
+ax.set_title(f"Washington County — history ({HIST_START_YEAR}+) and forecast to 2050 (focus on 2024-2035)")
 ax.grid(True, alpha=0.3)
 ax.legend()
 fig.tight_layout()
@@ -206,18 +226,26 @@ plt.show()
 Same three-scenario fan for each cohort county. Y-axes are
 independent so each county's trajectory fills its panel — read this for
 *shape* (declining, flat, growing) rather than relative *level*. Cornell
-PAD is shown only for Washington in the headline plot above.
+PAD is shown only for Washington in the main projection plot above.
 """),
     code("""
 fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 axes = axes.flatten()
+hist_cohort = historical[historical["geoid"].isin(COHORT)
+                         & (historical["year"] >= HIST_START_YEAR)
+                         & (historical["year"] <= BASE_YEAR)]
 for ax, (geoid, name) in zip(axes, COHORT.items()):
+    hist_sub = hist_cohort[hist_cohort["geoid"] == geoid].sort_values("year")
+    ax.plot(hist_sub["year"], hist_sub["population"],
+            color="black", linewidth=1.4, label="historical")
     sub = totals[totals["geoid"] == geoid]
     for scen in ["low", "baseline", "high"]:
         s = sub[sub["scenario"] == scen].sort_values("year")
         ax.plot(s["year"], s["population"], color=colors[scen], linewidth=1.4,
                 label=scen)
     ax.axvline(BASE_YEAR, color="black", linewidth=0.6, alpha=0.4)
+    ax.axvspan(SPECULATIVE_AFTER, 2050, color="grey", alpha=0.06, zorder=0)
+    ax.axvline(SPECULATIVE_AFTER, color="grey", linestyle=":", linewidth=0.7, alpha=0.6)
     ax.set_title(f"{name} ({geoid})", fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.ticklabel_format(axis="y", style="plain")

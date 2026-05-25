@@ -23,8 +23,8 @@ CELLS = [
 
 The Washington County population forecast in five sections:
 
-1. The headline: trajectory under three scenarios + how it compares to
-   Cornell PAD.
+1. The main projected trajectory under three scenarios + how it compares
+   to the Cornell PAD benchmark.
 2. Cohort context: Washington vs five demographic neighbors.
 3. Decomposition: how much of the decline is natural change (births −
    deaths) vs net migration.
@@ -67,7 +67,7 @@ print(f"town forecasts:     {len(town_fc):,} rows")
 """),
     # ---------------------------------------------------------------
     md("""
-## 1. Headline — Washington County under three scenarios
+## 1. Main projected trajectory — Washington County under three scenarios
 """),
     code("""
 def county_totals_by_year(df, geoid):
@@ -88,12 +88,19 @@ print(f"                       high {int(piv.loc[2050, 'high']) - int(piv.loc[BA
 """),
     # ---------------------------------------------------------------
     code("""
+# Cap history at HIST_START_YEAR so the chart focuses on the recent
+# trajectory plus the forecast horizon, rather than the full 2000+ series.
+HIST_START_YEAR = 2015
+SPECULATIVE_AFTER = 2035
+hist_wash_recent = hist_wash[hist_wash["year"] >= HIST_START_YEAR]
+pad_wash_recent = pad_wash[pad_wash["year"] >= HIST_START_YEAR]
+
 fig, ax = plt.subplots(figsize=(12, 5))
-# History
-ax.plot(hist_wash["year"], hist_wash["historical"], color="black",
-        linewidth=1.6, marker="o", markersize=3, label="Reconciled history")
+# History — recent only (~10 years pre-forecast).
+ax.plot(hist_wash_recent["year"], hist_wash_recent["historical"], color="black",
+        linewidth=1.6, marker="o", markersize=3, label=f"Reconciled history ({HIST_START_YEAR}+)")
 # PAD
-ax.plot(pad_wash["year"], pad_wash["pad"], color="grey", linestyle="--",
+ax.plot(pad_wash_recent["year"], pad_wash_recent["pad"], color="grey", linestyle="--",
         linewidth=1.2, marker="s", markersize=3, label="Cornell PAD (pre-pandemic)")
 # Scenarios — show baseline solid + low/high as a shaded band
 for scen, color, ls in [("baseline", "C0", "-")]:
@@ -107,7 +114,14 @@ ax.fill_between(low["year"], low["population"], high["population"],
 ax.axvline(BASE_YEAR, color="black", linewidth=0.5, alpha=0.5)
 ax.text(BASE_YEAR + 0.3, ax.get_ylim()[1] * 0.97, "base year",
         ha="left", va="top", fontsize=9, color="black")
-ax.set_title("Washington County, NY — population history and forecast")
+# Shade and annotate the post-2035 region (more speculative).
+ax.axvspan(SPECULATIVE_AFTER, 2050, color="grey", alpha=0.06, zorder=0)
+ax.axvline(SPECULATIVE_AFTER, color="grey", linestyle=":", linewidth=0.8, alpha=0.7)
+ax.text(SPECULATIVE_AFTER + 0.2, ax.get_ylim()[0] + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]),
+        "more speculative beyond 2035",
+        ha="left", va="bottom", fontsize=8, color="grey", style="italic")
+ax.set_xlim(left=HIST_START_YEAR - 0.5)
+ax.set_title("Washington County, NY — population history and forecast (focus on 2024-2035)")
 ax.set_xlabel("year"); ax.set_ylabel("population")
 ax.grid(True, alpha=0.3)
 ax.legend(loc="lower left")
@@ -122,20 +136,34 @@ Baseline scenario only, indexed to 100 at the base year to make trajectory
 shape easier to compare across counties of different sizes.
 """),
     code("""
+# Build a combined history+forecast indexed series per county so trajectory
+# shape is readable both pre- and post-base year.
+hist_cohort = hist[hist["geoid"].isin(VALIDATION_COHORT) & (hist["year"] >= HIST_START_YEAR)]
+hist_cohort = hist_cohort.groupby(["geoid", "year"])["population"].sum().reset_index()
+
 fig, ax = plt.subplots(figsize=(11, 5))
 for geoid, name in VALIDATION_COHORT.items():
-    sub = county_fc[(county_fc["geoid"] == geoid) & (county_fc["scenario"] == "baseline")]
-    sub = sub.groupby("year")["population"].sum().reset_index().sort_values("year")
-    if sub.empty:
+    fc_sub = county_fc[(county_fc["geoid"] == geoid) & (county_fc["scenario"] == "baseline")]
+    fc_sub = fc_sub.groupby("year")["population"].sum().reset_index().sort_values("year")
+    if fc_sub.empty:
         continue
-    base = float(sub.loc[sub["year"] == BASE_YEAR, "population"].iloc[0])
-    sub["indexed"] = 100.0 * sub["population"] / base
+    base = float(fc_sub.loc[fc_sub["year"] == BASE_YEAR, "population"].iloc[0])
+    hist_sub = hist_cohort[(hist_cohort["geoid"] == geoid) & (hist_cohort["year"] < BASE_YEAR)].sort_values("year")
+    combined = pd.concat([
+        hist_sub[["year", "population"]],
+        fc_sub[["year", "population"]],
+    ], ignore_index=True).sort_values("year")
+    combined["indexed"] = 100.0 * combined["population"] / base
     lw = 2.0 if geoid == WASHINGTON else 1.0
     alpha = 1.0 if geoid == WASHINGTON else 0.7
-    ax.plot(sub["year"], sub["indexed"], linewidth=lw, alpha=alpha,
+    ax.plot(combined["year"], combined["indexed"], linewidth=lw, alpha=alpha,
             label=name, marker="o", markersize=2)
 ax.axhline(100, color="grey", linewidth=0.6)
-ax.set_title(f"Cohort trajectories — baseline scenario, indexed to {BASE_YEAR} = 100")
+ax.axvline(BASE_YEAR, color="black", linewidth=0.6, alpha=0.4)
+ax.axvspan(SPECULATIVE_AFTER, 2050, color="grey", alpha=0.06, zorder=0)
+ax.axvline(SPECULATIVE_AFTER, color="grey", linestyle=":", linewidth=0.7, alpha=0.6)
+ax.set_xlim(left=HIST_START_YEAR - 0.5)
+ax.set_title(f"Validation counties — population indexed to {BASE_YEAR} = 100 (history + baseline forecast)")
 ax.set_xlabel("year"); ax.set_ylabel(f"population ({BASE_YEAR} = 100)")
 ax.grid(True, alpha=0.3)
 ax.legend()

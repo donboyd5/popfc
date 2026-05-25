@@ -16,7 +16,7 @@ If you came here asking "do I run a script or open each notebook?" — the short
        ┌───────────────┬───────────────┼───────────────┬──────────────┐
        ▼               ▼               ▼               ▼              ▼
   Census PEP       NYSDOL         CDC bridged       NCHS         Cornell PAD
-  (counts +     (1970-2023)      (Wash 1990-       (life          (benchmark)
+  (counts +     (1970-2025)      (Wash 1990-       (life          (benchmark)
   components)                       2020)         tables)
        │               │               │               │              │
        ▼               ▼               ▼               ▼              ▼
@@ -28,7 +28,7 @@ If you came here asking "do I run a script or open each notebook?" — the short
                                        ▼
   Notebook 01 → population_reconciled.parquet      (single authoritative pop series)
   Notebook 02 → county_components.parquet           (births/deaths/migration)
-  Notebook 03 → county_agesex_1990_2023.parquet     (age × sex base for CCM)
+  Notebook 03 → county_agesex_1990_2024.parquet     (age × sex base for CCM)
   Notebook 04 → life_tables.parquet                 (NCHS + USALEEP stack)
                 + ACS B01001/B07001/B06001 caches under data_raw/acs/
   Notebook 05 → asfr.parquet                        (scaled fertility rates)
@@ -36,7 +36,7 @@ If you came here asking "do I run a script or open each notebook?" — the short
   Notebook 07 → net_migration_rates.parquet         (residual method m(x, sex))
                                        │
                                        ▼
-  Notebook 08 → county_forecasts.parquet            (CCM run 2023 → 2050,
+  Notebook 08 → county_forecasts.parquet            (CCM run 2024 → 2050,
                                                      low/base/high × 6 counties)
                                        │
                                        ▼
@@ -84,8 +84,8 @@ That's it. The headline outputs are:
 
 - `data_interim/population_reconciled.parquet` — historical population
 - `data_interim/county_components.parquet`     — historical components of change
-- `data_interim/county_agesex_1990_2023.parquet` — historical age × sex
-- `data_interim/county_forecasts.parquet`      — county projections 2023 → 2050
+- `data_interim/county_agesex_1990_2024.parquet` — historical age × sex
+- `data_interim/county_forecasts.parquet`      — county projections 2024 → 2050
 - `data_interim/town_forecasts.parquet`        — Washington town projections 2022 → 2047
 - `data_final/*`                                — cleaned CSV+parquet exports for downstream use (Notebook 10)
 
@@ -106,7 +106,7 @@ Every notebook has the same five-section structure: load → transform → diagn
 **Writes:** `population_all_sources.parquet`, `population_reconciled.parquet`
 **Decides:** for each (county, year) which source is authoritative.
 Rules: NYSDOL census for 2000/2010/2020 decennials; NYSDOL intercensal
-for 2001-2019; Census PEP postcensal for 2021-2024.
+for 2001-2019; Census PEP postcensal for 2021-2025.
 
 ### 02 — Components audit
 
@@ -118,7 +118,7 @@ Cross-checks PEP counts against PEP rate-reconstruction.
 ### 03 — Age/sex audit
 
 **Reads:** CDC Bridged-Race + Census SYA
-**Writes:** `county_agesex_1990_2023.parquet`
+**Writes:** `county_agesex_1990_2024.parquet`
 **Quantifies:** the 2020 bridged-vs-unbridged methodology seam (~0.8% in
 Washington).
 
@@ -132,7 +132,7 @@ quick looks at foreign-born share, mover share, age structure.
 ### 05 — Fertility prep
 
 **Reads:** `county_components.parquet`, `population_reconciled.parquet`,
-`county_agesex_1990_2023.parquet`
+`county_agesex_1990_2024.parquet`
 **Writes:** `asfr.parquet`
 **Method:** scale NCHS 2023 national ASFR schedule to match observed
 total births per county-year. The age pattern is national; the level is
@@ -147,19 +147,19 @@ rates (S(x)=L(x+1)/L(x), boundary at age 100 via Preston's combined formula).
 
 ### 07 — Migration prep
 
-**Reads:** `county_agesex_1990_2023.parquet`, `life_tables.parquet`
+**Reads:** `county_agesex_1990_2024.parquet`, `life_tables.parquet`
 **Writes:** `net_migration_rates.parquet`
 **Method:** residual method — net migration is what's left after
 projecting last year's pop forward by survival. Averaged across the
-2020-21, 2021-22, 2022-23 year-pairs to reduce noise.
+2020-21, 2021-22, 2022-23, 2023-24 year-pairs (4 pairs) to reduce noise.
 
 ### 08 — County forecast
 
-**Reads:** survival, asfr, net_mig, plus the 2023 base population from
-`county_agesex_1990_2023.parquet`
+**Reads:** survival, asfr, net_mig, plus the 2024 base population from
+`county_agesex_1990_2024.parquet`
 **Writes:** `county_forecasts.parquet`
 **Method:** runs the cohort-component engine in `popfc.models.cohort_component`
-for Washington + 5 validation counties, 2023 → 2050, under three
+for Washington + 5 validation counties, 2024 → 2050, under three
 scenarios (low / baseline / high). Overlays the Cornell PAD benchmark.
 
 ### 09 — Town forecast
@@ -181,7 +181,7 @@ to the matching county forecast under each scenario.
 `popfc.reporting.export.write_final_exports`); no new interim file.
 **Content:** headline trajectory under three scenarios with Cornell PAD
 overlay; cohort context (Washington vs five neighbors); decomposition
-of decline into natural change vs net migration; age pyramid 2023 vs
+of decline into natural change vs net migration; age pyramid 2024 vs
 2050; per-town table and trajectory chart; town shares of county. Last
 cell regenerates `data_final/`.
 

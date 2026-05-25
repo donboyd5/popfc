@@ -44,7 +44,7 @@ consumed by downstream code directly.
 | `kind`        | string           | `estimate` / `estimates_base` / `census` / `projection` / `intercensal` |
 | `population`  | nullable Int64   | Population count |
 | `source`      | string           | `census_pep` / `nysdol` / `cdc_bridged` / `nysdoh` / `cornell_pad` |
-| `vintage`     | string           | Source-specific vintage tag (e.g., `v2024`, `nysdol_2025-04-20`) |
+| `vintage`     | string           | Source-specific vintage tag (e.g., `v2025`, `nysdol_2026-05-24`) |
 | `notes`       | string           | Free-form notes |
 
 ### `population_reconciled.parquet` (Notebook 01) — POP_LONG_COLUMNS + `rule`
@@ -54,10 +54,10 @@ The single authoritative population per (geoid, year). Same schema as
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `rule` | string | Why this row was chosen: `decennial_census_nysdol`, `intercensal_nysdol`, `postcensal_census_pep` |
+| `rule` | string | Why this row was chosen: `july1_nysdol_intercensal` (2000-2019) or `july1_census_pep` (2020+) |
 
-Coverage: 63 entities (62 NY counties + state total) × 25 years
-(2000-2024). 1,575 rows.
+Coverage: 63 entities (62 NY counties + state total) × 26 years
+(2000-2025). 1,638 rows.
 
 ### `county_components.parquet` (Notebook 02) — COMPONENTS_LONG_COLUMNS
 
@@ -73,16 +73,16 @@ Census PEP components of change in long form.
 | `measure`     | string           | `births` / `deaths` / `natural_change` / `international_mig` / `domestic_mig` / `net_mig` / `residual` / `gq_estimate` / `pop_change` / `rate_births` / `rate_deaths` / etc. |
 | `value`       | nullable Float64 | Count (Int-like) or rate (per 1,000) depending on measure |
 | `source`      | string           | `census_pep` |
-| `vintage`     | string           | `v2020` or `v2024` (whichever vintage is latest for that year) |
+| `vintage`     | string           | `v2020` or `v2025` (whichever vintage is latest for that year) |
 | `notes`       | string           |             |
 
-Coverage: 13,797 rows (2010-2024).
+Coverage: 14,742 rows (2010-2025).
 
-### `county_agesex_1990_2023.parquet` (Notebook 03) — AGESEX_LONG_COLUMNS
+### `county_agesex_1990_2024.parquet` (Notebook 03) — AGESEX_LONG_COLUMNS
 
 Single-year-of-age × sex × year population, stitched across CDC
 Bridged-Race (Washington 1990-2020) and Census SYA (all NY counties
-2020-2023).
+2020-2024).
 
 | Column           | Type           | Description |
 |------------------|----------------|-------------|
@@ -100,7 +100,7 @@ Bridged-Race (Washington 1990-2020) and Census SYA (all NY counties
 | `vintage`        | string         | Source-specific tag |
 | `notes`          | string         |             |
 
-Coverage: 58,652 rows.
+Coverage: 69,316 rows.
 
 ### `life_tables.parquet` (Notebook 04) — LIFE_TABLE_COLUMNS
 
@@ -146,7 +146,7 @@ national reference schedule.
 | `observed_births`   | nullable Float64 | Total births used in the scaling |
 | `notes`             | string          |             |
 
-Coverage: 10,280 rows (62 counties × 4 years 2020-2023 + Washington
+Coverage: 12,760 rows (62 counties × 5 years 2020-2024 + Washington
 × 9 historical years 2011-2019).
 
 ### `survival_rates.parquet` (Notebook 06) — SURVIVAL_RATES_COLUMNS
@@ -177,7 +177,7 @@ Per-source-age net migration rates by the residual method.
 |-----------------|-----------------|-------------|
 | `geoid`         | string          | 5-char FIPS |
 | `geography`     | string          | Name |
-| `year_basis`    | string          | Description of year-pairs averaged (e.g., `"avg of 3 pairs: 2020-2021,2021-2022,2022-2023"`) |
+| `year_basis`    | string          | Description of year-pairs averaged (e.g., `"avg of 4 pairs: 2020-2021,2021-2022,2022-2023,2023-2024"`) |
 | `sex`           | string          | `M` / `F` |
 | `band_type`     | string          | `closed` / `boundary` |
 | `age`           | Int64           | Destination age (x+1 for closed, ω for boundary) |
@@ -196,14 +196,14 @@ Single-year-of-age cohort-component projections for cohort counties.
 |-----------------------|-----------------|-------------|
 | `geoid`               | string          | 5-char FIPS |
 | `geography`           | string          | Name |
-| `year`                | Int64           | Calendar year (2023-2050) |
+| `year`                | Int64           | Calendar year (2024-2050) |
 | `sex`                 | string          | `M` / `F` |
 | `age`                 | Int64           | 0-85 (top-coded at 85) |
 | `population`          | nullable Float64 | Projected pop |
 | `scenario`            | string          | `baseline` / `low` / `high` |
 | `projection_vintage`  | string          | Tag identifying the engine run (e.g., `engine_v1_asfr_x1.0_netmig_x1.0`) |
 
-Coverage: 86,688 rows (6 counties × 3 scenarios × 28 years × 2 sexes × 86 ages).
+Coverage: 83,592 rows (6 counties × 3 scenarios × 27 years × 2 sexes × 86 ages).
 
 ### `town_forecasts.parquet` (Notebook 09) — HP_PROJECTION_COLUMNS + 2 cols
 
@@ -241,12 +241,12 @@ One row per scenario.
 | Column                  | Description |
 |-------------------------|-------------|
 | `scenario`              | `baseline` / `low` / `high` |
-| `2023`, `2030`, `2040`, `2050` | Washington County total population at each key year |
-| `pct_change_2023_2050`  | Percentage change |
+| `2024`, `2030`, `2040`, `2050` | Washington County total population at each key year |
+| `pct_change_2024_2050`  | Percentage change |
 
 ### `washington_history.csv`
 
-Annual reconciled population for Washington County, 2000-2024.
+Annual reconciled population for Washington County, 2000-2025.
 
 | Column | Description |
 |--------|-------------|
@@ -265,7 +265,7 @@ vintage, columns for each measure).
 |-------------|-------------|
 | `geoid`     | 5-char FIPS |
 | `geography` | County name |
-| `year`      | 2023-2050 |
+| `year`      | 2024-2050 |
 | `scenario`  | `baseline` / `low` / `high` |
 | `population`| Total population |
 

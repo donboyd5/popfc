@@ -50,11 +50,28 @@ raw data lives in `data_raw/` (fetched via the download pipeline).
 
 ---
 
-## Current Status (as of 2026-05-24, Phases 1–5 complete + July 1 anchor refinement on `feat/july1-decennial-anchor`)
+## Current Status (as of 2026-05-24, Phases 1–5 complete + V2025 data refresh on `feat/data-refresh-v2025`)
 
-### Phase 1 — COMPLETE (with one post-merge refinement in progress)
+### V2025 data refresh — IN PROGRESS on `feat/data-refresh-v2025` (2026-05-24)
 
-Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data source on disk (Census PEP 3 vintages, Census SYA, CDC Bridged-Race, NYSDOL, NYSDOH, Cornell PAD), the `popfc.reconcile` module, Notebooks 01–03, and interim parquet outputs `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2023.parquet`. 26 tests passed at merge time.
+End-to-end pipeline re-run on the latest available upstream data. Headline changes:
+
+- **Census PEP V2025** (`co-est2025-alldata.csv`, released 2026-03-26) replaces V2024 — adds calendar year 2025 to totals + components of change.
+- **Census SYA V2024** (`cc-est2024-syasex-36.csv`) replaces V2023 — adds 7/1/2024 to the age × sex frame; introduces YEAR-code 6 in the SYA loader.
+- **Census V2025 subcounty** (`sub-est2025.csv`) dropped in but unused by the pipeline currently (kept as a future hook).
+- **NYSDOL annual** refreshed from data.ny.gov (now through 2025); loader gains space-to-underscore column normalization for the direct-download header style.
+- `data_interim/county_agesex_1990_2023.parquet` → **`county_agesex_1990_2024.parquet`** (one more year).
+- **Forecast base year moves 2023 → 2024.** Cohort-component run extends 2024-2050 (was 2023-2050).
+- **Migration averaged over 4 year-pairs** (2020-21..2023-24) instead of 3.
+- Washington baseline 2050: **47,567** (was 45,342) — softer decline as one additional data year of recovery enters the migration average.
+- `download.py` extended with `DownloadSpec`s for Census PEP/SYA/sub-est + NYSDOL so future refreshes are a single command.
+- 130 tests passing post-refresh.
+
+Follow-up tracked: separate `feat/data-archival` branch will add `data_raw/MANIFEST.toml` with SHA-256 hashes + URLs and commit the small, foundational files inline for long-term reproducibility against URL rot.
+
+### Phase 1 — COMPLETE (refreshed numbers under V2025 refresh)
+
+Merged to `main` at commit `408aaa4`. Phase 1 covers loaders for every raw data source on disk (Census PEP 3 vintages, Census SYA, CDC Bridged-Race, NYSDOL, NYSDOH, Cornell PAD), the `popfc.reconcile` module, Notebooks 01–03, and interim parquet outputs `population_reconciled.parquet`, `county_components.parquet`, and `county_agesex_1990_2024.parquet` (post-V2025-refresh, was `_1990_2023`).
 
 **Post-merge refinement (in progress, branch `feat/july1-decennial-anchor`, 2026-05-24):** The reconciled series now anchors **every year on a July 1 estimate**, including the decennial years 2000/2010/2020. Previously the rule used the April 1 decennial enumeration at those three years, which created a ~3-month phase shift relative to the otherwise July 1 series and distorted year-over-year trend visualizations. New rule:
 
@@ -110,12 +127,12 @@ Cohort-component projector + the three input prep notebooks are all built and pr
 
 **Notebooks 05-08:**
 
-- 05 — fertility prep → `data_interim/asfr.parquet` (10,280 rows; 62 counties × 4 years + Washington × 9 historical years)
+- 05 — fertility prep → `data_interim/asfr.parquet` (12,760 rows post-V2025-refresh; 62 counties × 5 years 2020-2024 + Washington × 9 historical years)
 - 06 — mortality prep → `data_interim/survival_rates.parquet` (606 rows; US 2023 + NY 2022 × 3 sexes × 101 ages)
-- 07 — migration prep → `data_interim/net_migration_rates.parquet` (10,540 rows)
-- 08 — county forecast → `data_interim/county_forecasts.parquet` (86,688 rows; 6 counties × 3 scenarios × 28 years × 2 sexes × 86 ages)
+- 07 — migration prep → `data_interim/net_migration_rates.parquet` (10,540 rows; 4 year-pairs averaged post-V2025-refresh)
+- 08 — county forecast → `data_interim/county_forecasts.parquet` (83,592 rows post-V2025-refresh; 6 counties × 3 scenarios × 27 years 2024-2050 × 2 sexes × 86 ages)
 
-**Headline projection** (baseline scenario, Washington County): 60,047 in 2023 → 51,600 in 2040 → **45,342 in 2050** (~24.5% decline). More pessimistic than Cornell PAD's pre-pandemic 2040 projection (59,196) because our migration inputs reflect 2020-2023 (pandemic-era out-migration accelerated).
+**Headline projection** (baseline scenario, Washington County, post-V2025-refresh): 59,839 in 2024 → 52,979 in 2040 → **47,567 in 2050** (~20.5% decline). Less pessimistic than the original 2023-base run (45,342 in 2050, ~24.5% decline) because (a) the base year is one year later and (b) the 2023-24 year-pair softened the pandemic-era out-migration signal in the residual average.
 
 #### Phase 3 follow-ons (not blocking; deferred to Phase 4 / future)
 
@@ -381,11 +398,13 @@ Copy-paste into a new session to continue:
 > The full pipeline (Notebooks 01-10) produces a working forecast end-to-end.
 > 130 tests pass.
 >
-> **Post-Phase-5 refinement in progress on `feat/july1-decennial-anchor`** (2026-05-24): the
-> reconciled population series now uses July 1 estimates for every year, including
-> the decennial years 2000/2010/2020 (previously used the April 1 enumeration there).
-> See `docs/planning.md` "Current Status" for the new rule. If not yet merged when
-> you read this, check the branch state before assuming the rule.
+> **V2025 data refresh on `feat/data-refresh-v2025`** (2026-05-24): the pipeline was
+> re-run on the latest upstream data — Census PEP V2025 (through 2025), Census SYA
+> V2024 (through 2024), NYSDOL through 2025. Forecast base year is now **2024**
+> (was 2023). Washington baseline 2050: **47,567** (was 45,342). All 130 tests pass.
+> If this branch is not yet merged when you read this, check the branch state
+> before assuming the new numbers. See `docs/planning.md` "Current Status" for
+> the full refresh log.
 >
 > Start by reading, in order:
 > 1. `CLAUDE.md`            — project rules (git workflow, data conventions)
@@ -394,7 +413,7 @@ Copy-paste into a new session to continue:
 > 4. `docs/data_dictionary.md` — column reference for every parquet artifact
 >
 > Headline outputs already exist:
-> - `data_interim/county_forecasts.parquet` — 6 counties × 3 scenarios × 28 yrs × age × sex
+> - `data_interim/county_forecasts.parquet` — 6 counties × 3 scenarios × 27 yrs (2024-2050) × age × sex
 > - `data_interim/town_forecasts.parquet`   — 17 Washington towns × 3 scenarios × 6 yrs × age-band × sex
 > - `data_final/*` — clean CSV + parquet exports for downstream use
 > - `notebooks/10_final_summary.ipynb` — current summary charts

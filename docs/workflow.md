@@ -105,8 +105,16 @@ Every notebook has the same five-section structure: load → transform → diagn
 **Reads:** raw Census PEP (3 vintages) + NYSDOL annual estimates
 **Writes:** `population_all_sources.parquet`, `population_reconciled.parquet`
 **Decides:** for each (county, year) which source is authoritative.
-Rules: NYSDOL census for 2000/2010/2020 decennials; NYSDOL intercensal
-for 2001-2019; Census PEP postcensal for 2021-2025.
+**Every retained value is a July 1 estimate**, including the decennial
+years 2000/2010/2020 — we do *not* mix April-1 census enumerations into
+the otherwise July-1 series (that would create a ~3-month phase shift
+at each decade boundary). The April-1 decennial counts are loaded into
+`population_all_sources.parquet` for QA / cross-check but never enter
+the reconciled series. The rule:
+- **2000-2019**: NYSDOL July-1 intercensal estimate (continuous through
+  the 2000 and 2010 decennials).
+- **2020+**: Census PEP July-1 postcensal estimate, latest vintage
+  (covers the 2020 decennial as the base of the postcensal series).
 
 ### 02 — Components audit
 
@@ -243,6 +251,35 @@ To pull a newer NCHS vintage: update `LATEST_ACS5_YEAR` in
 `src/popfc/data/acs.py` (one line) for ACS, or change the
 `DEFAULT_*` paths in `src/popfc/data/nchs.py` for NCHS life tables.
 The `download.py` registry also needs the new URL added.
+
+### How ACS data is fetched
+
+We talk to the Census Data API directly via a hand-rolled wrapper at
+`src/popfc/data/acs.py` — no third-party package (`cenpy`, `census`,
+`pyacs`). Per ACS table group request, we:
+
+1. Build a URL like `https://api.census.gov/data/{year}/acs/acs5?get=group({group})&for={geography}&in={parent_filter}&key={CENSUS_API_KEY}`.
+2. Fetch JSON; cache to `data_raw/acs/{year}/{group}_{geo_spec}.json` so
+   subsequent loads are zero-network.
+3. Parse via `load_acs5_group(group, year, geography=...)` which returns
+   a tidy DataFrame with one row per (geoid × variable).
+
+We keep this thin (no third-party package) so the cache strategy and
+geography-filter logic stay visible. The variable metadata for every
+year is also cached as `_variables.json` so we can look up column
+descriptions without re-hitting the API.
+
+### NYSDOL "data publication date" vs retrieval date
+
+NYSDOL files in `data_raw/nysdol/` use the filename convention
+`Annual_..._beginning_1970_d<YYYYMMDD>_r<YYYYMMDD>.csv` where:
+- `d<YYYYMMDD>` is when data.ny.gov last refreshed the dataset
+  (Socrata `rowsUpdatedAt`)
+- `r<YYYYMMDD>` is when we ran `python -m popfc.data.download`
+
+The `vintage` column in parquet outputs uses the data-publication date:
+`nysdol_2026-04-01`, not the retrieval date. So "the same vintage" means
+"the same upstream data," regardless of when we last fetched.
 
 ------------------------------------------------------------------------
 

@@ -163,51 +163,75 @@ register(DownloadSpec(
 
 
 # ---------------------------------------------------------------------------
-# NYSDOL annual county estimates (Socrata; vintage = date of download)
+# NYSDOL annual county estimates (Socrata)
+#
+# Filename convention encodes BOTH the data-publication date and our retrieval
+# date so the vintage is unambiguous:
+#   Annual_..._beginning_1970_d<YYYYMMDD>_r<YYYYMMDD>.csv
+#   - d<YYYYMMDD> = data-publication date (Socrata `rowsUpdatedAt`)
+#   - r<YYYYMMDD> = retrieval date (when we downloaded)
+# `_derive_vintage` in nysdol.py reads the `d` date for the `vintage` column.
 # ---------------------------------------------------------------------------
 
 _NYSDOL_BASE_FILENAME = "Annual_Population_Estimates_for_New_York_State_and_Counties__Beginning_1970"
+_NYSDOL_METADATA_URL = "https://data.ny.gov/api/views/krt9-ym2k.json"
 
 
-def _nysdol_target_for_today() -> Path:
-    """Return today's dated target path for the NYSDOL annual CSV."""
-    from datetime import date  # local import keeps module-import side effects small
-    stamp = date.today().strftime("%Y%m%d")
-    return NYSDOL_DIR / f"{_NYSDOL_BASE_FILENAME}_{stamp}.csv"
+def _nysdol_data_update_date() -> str:
+    """Query data.ny.gov for the dataset's `rowsUpdatedAt` and return YYYYMMDD."""
+    from datetime import datetime, timezone
+    resp = requests.get(_NYSDOL_METADATA_URL, timeout=30)
+    resp.raise_for_status()
+    meta = resp.json()
+    ts = meta.get("rowsUpdatedAt")
+    if not ts:
+        raise RuntimeError(
+            f"data.ny.gov metadata missing rowsUpdatedAt: {_NYSDOL_METADATA_URL}"
+        )
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y%m%d")
 
 
 def _nysdol_existing() -> Path | None:
-    """Most recent dated NYSDOL CSV on disk (by filename date), or None."""
-    cands = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE_FILENAME}_*.csv"))
-    return cands[-1] if cands else None
+    """Latest NYSDOL CSV on disk, preferring the new format. None if none found."""
+    # New format: ..._dYYYYMMDD_rYYYYMMDD.csv — sort puts most recent data-update last.
+    new_fmt = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE_FILENAME}_d*_r*.csv"))
+    if new_fmt:
+        return new_fmt[-1]
+    # Legacy format: ..._YYYYMMDD.csv — retrieval date only.
+    legacy = sorted(NYSDOL_DIR.glob(f"{_NYSDOL_BASE_FILENAME}_*.csv"))
+    return legacy[-1] if legacy else None
 
 
 def _nysdol_fetcher(spec: DownloadSpec, force: bool) -> None:
-    """Save the response under today's date stamp; reuse any existing dated copy unless forced."""
+    """Download NYSDOL annual estimates with both data-publication and retrieval dates in the filename."""
     existing = _nysdol_existing()
     if existing is not None and not force:
         print(f"  [cached] {_display_path(existing)}")
         return
-    today_target = _nysdol_target_for_today()
-    today_target.parent.mkdir(parents=True, exist_ok=True)
     if spec.source_url is None:
         raise RuntimeError(f"{spec.name}: NYSDOL fetcher requires a source_url")
+    from datetime import date
+    data_update = _nysdol_data_update_date()
+    retrieved = date.today().strftime("%Y%m%d")
+    target = NYSDOL_DIR / f"{_NYSDOL_BASE_FILENAME}_d{data_update}_r{retrieved}.csv"
+    target.parent.mkdir(parents=True, exist_ok=True)
     resp = requests.get(spec.source_url, stream=True, timeout=120)
     resp.raise_for_status()
-    with open(today_target, "wb") as f:
+    with open(target, "wb") as f:
         for chunk in resp.iter_content(chunk_size=1 << 16):
             if chunk:
                 f.write(chunk)
-    print(f"  [fetched] {_display_path(today_target)}  "
-          f"({today_target.stat().st_size:,} bytes)")
+    print(f"  [fetched] {_display_path(target)}  "
+          f"({target.stat().st_size:,} bytes)  "
+          f"[data updated {data_update[:4]}-{data_update[4:6]}-{data_update[6:8]}]")
 
 
 register(DownloadSpec(
     name="nysdol_annual_pop_county",
-    # target points to today's would-be filename for display purposes; the
-    # exists_check below accepts any prior dated copy in the directory.
-    target=_nysdol_target_for_today(),
-    description="NYSDOL annual county/state population estimates (data.ny.gov krt9-ym2k)",
+    # target is informational; the fetcher derives the real filename from the
+    # data-update date returned by Socrata. exists_check accepts any prior copy.
+    target=NYSDOL_DIR / f"{_NYSDOL_BASE_FILENAME}_d<YYYYMMDD>_r<YYYYMMDD>.csv",
+    description="NYSDOL annual county/state population estimates (data.ny.gov krt9-ym2k); filename encodes data-publication date + retrieval date",
     source_url="https://data.ny.gov/api/views/krt9-ym2k/rows.csv?accessType=DOWNLOAD",
     fetcher=_nysdol_fetcher,
     exists_check=lambda _spec: _nysdol_existing() is not None,

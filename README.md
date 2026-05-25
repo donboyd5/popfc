@@ -5,7 +5,12 @@ constituent towns, using cohort-component methodology at the county level and a
 combination of cohort-component + statistical models at the town level (with
 towns constrained to sum to the county forecast).
 
-See [docs/planning.md](docs/planning.md) for the full plan.
+**Where to read first:**
+- [docs/methodology.md](docs/methodology.md) — plain-language reference for every method, acronym, and notation symbol used in the project.
+- [docs/workflow.md](docs/workflow.md) — operational reference (how to run the pipeline end-to-end).
+- [docs/changelog.md](docs/changelog.md) — what we did recently, newest first; the canonical "current state" record.
+- [docs/data_dictionary.md](docs/data_dictionary.md) — schemas for every interim/final parquet.
+- [docs/planning.md](docs/planning.md) — original phase-by-phase plan + historical narrative.
 
 ## Project layout
 
@@ -15,10 +20,13 @@ popfc/
 ├── requirements.txt         pinned runtime deps for reproducibility
 ├── requirements-dev.txt     pytest, ruff, nbstripout
 ├── CLAUDE.md                durable project rules (git workflow, conventions)
+├── Makefile                 convenience targets (make help, run-all, test, ...)
 ├── docs/
-│   ├── planning.md          master plan and phase status (read this first)
+│   ├── methodology.md       acronyms + notation + plain-language method explanations
 │   ├── workflow.md          how to run the pipeline end-to-end
+│   ├── changelog.md         chronological "what we did" record (newest first)
 │   ├── data_dictionary.md   schemas for every interim/final artifact
+│   ├── planning.md          historical phase narrative + project goals
 │   └── r_reference/         preserved .qmd / .R prose from the legacy R project
 ├── data_raw/                raw source data (not committed; fetched via download script)
 ├── data_interim/            cleaned/harmonized parquet files (not committed)
@@ -103,6 +111,30 @@ python -m popfc.data.download --force          # re-fetch everything
 python -m popfc.data.download --list           # show the registry
 python -m popfc.data.download --source NAME    # one file
 ```
+
+## Common tasks (`make`)
+
+A `Makefile` at the project root wraps the most-used operations. Run
+`make help` for the full list. Brief tour:
+
+```bash
+make help            # list all targets
+make refresh-data    # fetch/cache raw data (skips files already on disk)
+make build-nb        # regenerate notebooks/*.ipynb from notebooks/_build_*.py
+make run-all         # execute notebooks 01-10 in dependency order
+make test            # run pytest -q
+make export-final    # refresh data_final/ exports from existing parquets
+make all             # refresh-data + build-nb + run-all + test
+```
+
+The Makefile invokes `.venv/bin/python` and `.venv/bin/jupyter` directly,
+so you don't need to `source .venv/bin/activate` first — though most
+folks do anyway for interactive work.
+
+`make build-nb` is a one-way operation: it regenerates the `.ipynb`
+files from the `_build_*.py` generator scripts. Edit the generator (not
+the notebook directly) when you want to change cell structure;
+re-execute the notebook to repopulate outputs.
 
 ## Development
 

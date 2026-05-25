@@ -50,24 +50,31 @@ raw data lives in `data_raw/` (fetched via the download pipeline).
 
 ---
 
-## Current Status (as of 2026-05-24, Phases 1–5 complete + V2025 data refresh on `feat/data-refresh-v2025`)
+## Current Status (as of 2026-05-25)
 
-### V2025 data refresh — IN PROGRESS on `feat/data-refresh-v2025` (2026-05-24)
+**Where things stand:** Phases 1–5 complete and merged to `main`. The
+V2025 data refresh merged 2026-05-24 (commit `3111c0f`); a Batch 1 of
+review-driven quick fixes + the methodology book is in progress on
+`feat/quickfixes-batch1` and `docs/main`. 130 tests passing.
 
-End-to-end pipeline re-run on the latest available upstream data. Headline changes:
+**Headline numbers (Washington County, baseline scenario):** 59,839 in
+2024 → 52,979 in 2040 → **47,567 in 2050** (~20.5% decline).
 
-- **Census PEP V2025** (`co-est2025-alldata.csv`, released 2026-03-26) replaces V2024 — adds calendar year 2025 to totals + components of change.
-- **Census SYA V2024** (`cc-est2024-syasex-36.csv`) replaces V2023 — adds 7/1/2024 to the age × sex frame; introduces YEAR-code 6 in the SYA loader.
-- **Census V2025 subcounty** (`sub-est2025.csv`) dropped in but unused by the pipeline currently (kept as a future hook).
-- **NYSDOL annual** refreshed from data.ny.gov (now through 2025); loader gains space-to-underscore column normalization for the direct-download header style.
-- `data_interim/county_agesex_1990_2023.parquet` → **`county_agesex_1990_2024.parquet`** (one more year).
-- **Forecast base year moves 2023 → 2024.** Cohort-component run extends 2024-2050 (was 2023-2050).
-- **Migration averaged over 4 year-pairs** (2020-21..2023-24) instead of 3.
-- Washington baseline 2050: **47,567** (was 45,342) — softer decline as one additional data year of recovery enters the migration average.
-- `download.py` extended with `DownloadSpec`s for Census PEP/SYA/sub-est + NYSDOL so future refreshes are a single command.
-- 130 tests passing post-refresh.
+For the chronological "what we did" record — including the V2025
+refresh, the methodology book, plot improvements, and every other
+recent change — see **[`docs/changelog.md`](changelog.md)**. That is
+the canonical current-state reference. The phase sections below
+preserve the original Phase 1-5 narrative for context but the
+numbers in them are frozen at the time each phase was merged.
 
-Follow-up tracked: separate `feat/data-archival` branch will add `data_raw/MANIFEST.toml` with SHA-256 hashes + URLs and commit the small, foundational files inline for long-term reproducibility against URL rot.
+**Active follow-ups** (tracked but not yet started):
+- `feat/data-archival` — `data_raw/MANIFEST.toml` with SHA-256 hashes
+  + URLs; commit small foundational raw files inline (reproducibility
+  against URL rot).
+- Post-review batches 2-7 — outlier audit, scenario redesign,
+  migration decomposition, historical town data, better town
+  forecasts, mortality refinement. See `docs/comments.md` (user's
+  review notes, not tracked in git) for the source list.
 
 ### Phase 1 — COMPLETE (refreshed numbers under V2025 refresh)
 
@@ -394,23 +401,24 @@ Copy-paste into a new session to continue:
 > `/home/donboyd5/Documents/python_projects/popfc/`. Python 3.12 venv at `.venv/`,
 > installable package at `src/popfc/`. Repo at https://github.com/donboyd5/popfc.
 >
-> **Status: Phases 1-5 are COMPLETE and merged to main (commit `4af5a61`).**
-> The full pipeline (Notebooks 01-10) produces a working forecast end-to-end.
-> 130 tests pass.
+> **Status: Phases 1-5 are COMPLETE and merged to main.** The full pipeline
+> (Notebooks 01-10) produces a working forecast end-to-end. 130 tests pass.
+> Forecast base year is **2024**; Washington baseline 2050 is **47,567**
+> (~20.5% decline from 2024).
 >
-> **V2025 data refresh on `feat/data-refresh-v2025`** (2026-05-24): the pipeline was
-> re-run on the latest upstream data — Census PEP V2025 (through 2025), Census SYA
-> V2024 (through 2024), NYSDOL through 2025. Forecast base year is now **2024**
-> (was 2023). Washington baseline 2050: **47,567** (was 45,342). All 130 tests pass.
-> If this branch is not yet merged when you read this, check the branch state
-> before assuming the new numbers. See `docs/planning.md` "Current Status" for
-> the full refresh log.
+> **Where to find current state:** `docs/changelog.md` is the canonical
+> "what we did recently" record — read it for the latest merged work
+> (most recent first). `docs/planning.md` retains the original phase
+> narrative for context but its numbers are frozen at each phase's
+> merge time; the changelog has fresher detail.
 >
 > Start by reading, in order:
-> 1. `CLAUDE.md`            — project rules (git workflow, data conventions)
-> 2. `docs/workflow.md`     — how to run the pipeline end-to-end
-> 3. `docs/planning.md`     — phase-by-phase status; the Current Status block summarizes Phases 1-5
-> 4. `docs/data_dictionary.md` — column reference for every parquet artifact
+> 1. `CLAUDE.md`              — project rules (git workflow, data conventions)
+> 2. `docs/workflow.md`       — how to run the pipeline end-to-end
+> 3. `docs/methodology.md`    — plain-language reference for every method, acronym, and notation symbol
+> 4. `docs/changelog.md`      — recent work, newest first
+> 5. `docs/planning.md`       — historical phase narrative (frozen)
+> 6. `docs/data_dictionary.md` — column reference for every parquet artifact
 >
 > Headline outputs already exist:
 > - `data_interim/county_forecasts.parquet` — 6 counties × 3 scenarios × 27 yrs (2024-2050) × age × sex

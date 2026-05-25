@@ -11,7 +11,46 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-25 — `feat/quickfixes-batch1` (in progress)
+## 2026-05-25 — `feat/outlier-audit` (in progress)
+
+Batch 2 of the post-V2025-refresh review: explicit outlier-detection
+sections in every notebook that produces forecast inputs, plus a
+cohort-level data-quality summary in Notebook 10.
+
+- **Notebook 01 §4b** — statewide source-disagreement audit. Flags
+  county-years where `(max - min) / max > 0.5%` across available
+  sources. Top offender: Hamilton County (7-15% spread across multiple
+  years). Cohort: Washington is the cleanest (17% of years flagged);
+  Saratoga and Warren show ~38% (decennial-seam intercensal vs
+  postcensal drift, which the reconciliation rule already handles).
+- **Notebook 02 §2.6** — explicit identity-check thresholds:
+  `|residual|/pop > 5‰`, plus births/deaths YoY changes > 20%.
+  Surfaces the known PEP decennial-seam artifact (partial-year
+  births at 2010/2020 → 4× "jump" at 2011/2021). Notebook 05 already
+  works around this by using rate-based annualization.
+- **Notebook 03 §2b** — across all 62 NY counties, gap between the
+  4/1/2020 census enumeration and 7/1/2020 estimate. Cohort all
+  within ±0.5%; small counties (Hamilton) and NYC boroughs are the
+  outliers.
+- **Notebook 05 §6b** — extreme ASFR scaling factor `k` and implied
+  TFR. Real outliers surfaced: Tompkins County (Cornell U) at
+  TFR ~0.75; Rockland County (Orthodox communities) at TFR ~3.3.
+- **Notebook 07 §4b** — implausible per-cohort migration rates
+  `|m_rate| > 20%/yr`. 1.3% of cells flagged; concentrated in small
+  rural counties and college towns. Cohort counties: 0-2 flagged
+  cells each (Washington 1).
+- **Notebook 10 §5b** — cross-notebook outlier summary. Per-cohort-
+  county table consolidating flag counts from all five audits, plus
+  reading guide. Conclusion: cohort-county forecast inputs are clean;
+  the constraining limitations are *methodological* (single net
+  migration rate, scenario knobs, national ASFR pattern) rather
+  than data-quality.
+
+Status: in progress on the branch. Pushed once complete.
+
+---
+
+## 2026-05-25 — `feat/quickfixes-batch1` (merged to main `b384ab1`)
 
 Batch 1 of the post-V2025-refresh review: quick wins, plus the
 methodology book as the centerpiece.

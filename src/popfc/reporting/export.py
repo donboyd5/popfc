@@ -9,7 +9,7 @@ Outputs written by `write_final_exports()`:
 
 | File                              | What it contains                       |
 |-----------------------------------|----------------------------------------|
-| `washington_history.csv`          | reconciled annual pop, Washington 2000-2024 |
+| `washington_history.csv`          | reconciled annual pop, Washington 2000-present |
 | `washington_components.csv`       | components of change, Washington       |
 | `county_forecast_totals.csv`      | year × scenario × geoid totals (cohort)|
 | `county_forecast_agesex.parquet`  | full age × sex forecast (cohort), parquet only — too wide for CSV |
@@ -46,7 +46,7 @@ def _ensure_dir(p: Path) -> Path:
 
 
 def write_washington_history(out_dir: Path) -> Path:
-    """Reconciled annual Washington population, 2000-2024."""
+    """Reconciled annual Washington population (full coverage from reconciliation parquet)."""
     src = pd.read_parquet(DATA_INTERIM / "population_reconciled.parquet")
     wash = (
         src[src["geoid"] == FULL_FIPS]
@@ -135,11 +135,12 @@ def write_summary_headline(out_dir: Path) -> Path:
         .sum().reset_index()
     )
     pv = wash.pivot_table(index="scenario", columns="year", values="population")
-    key_years = [y for y in (2023, 2030, 2040, 2050) if y in pv.columns]
+    base_year = int(pv.columns.min())  # forecast base year — first year in the data
+    key_years = [y for y in (base_year, 2030, 2040, 2050) if y in pv.columns]
     out = pv[key_years].round(0).astype(int).reset_index()
-    if 2023 in pv.columns and 2050 in pv.columns:
-        out["pct_change_2023_2050"] = (
-            100.0 * (pv[2050] / pv[2023] - 1)
+    if base_year in pv.columns and 2050 in pv.columns:
+        out[f"pct_change_{base_year}_2050"] = (
+            100.0 * (pv[2050] / pv[base_year] - 1)
         ).round(2).to_numpy()
     path = out_dir / "summary_headline.csv"
     out.to_csv(path, index=False)

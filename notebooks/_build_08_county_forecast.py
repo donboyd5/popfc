@@ -21,7 +21,7 @@ CELLS = [
     md("""
 # 08 — County Forecast (Phase 3 deliverable)
 
-**Goal.** Run the cohort-component engine from the 2023 base year to
+**Goal.** Run the cohort-component engine from the 2024 base year to
 2050 for Washington County and the 5 validation-cohort counties, under
 three scenarios (low / baseline / high), and compare against the
 Cornell PAD projection benchmark.
@@ -39,8 +39,8 @@ All produced by earlier Phase-3 notebooks:
 | `data_raw/cornell/padprojections115.xls` (benchmark) | Cornell |
 
 Survival is NCHS NY State 2022 (rebanded to top-code 85). ASFR is the
-county-specific scaled-to-2023 schedule. Net migration is the
-2020-2023 three-year average per county-sex-age.
+county-specific scaled-to-2024 schedule. Net migration is the
+2020-2024 four-year average per county-sex-age.
 
 ## Scenarios
 
@@ -57,7 +57,7 @@ overrides) are out of scope.
 ## Output
 
 `data_interim/county_forecasts.parquet` — one row per (geoid, year,
-sex, age, scenario), 2023-2050.
+sex, age, scenario), 2024-2050.
 """),
     # ---------------------------------------------------------------
     code("""
@@ -78,7 +78,7 @@ from popfc.paths import DATA_INTERIM, FULL_FIPS
 pd.set_option("display.width", 160)
 pd.set_option("display.max_columns", 40)
 
-BASE_YEAR = 2023
+BASE_YEAR = 2024
 END_YEAR = 2050
 TOP_CODE_AGE = 85
 WASHINGTON = FULL_FIPS
@@ -132,7 +132,7 @@ for geoid, name in COHORT.items():
     if base.empty:
         print(f"WARN: no base pop for {geoid} ({name})")
         continue
-    # County-specific 2023 ASFR (use as forecast schedule, held constant).
+    # County-specific base-year ASFR (use as forecast schedule, held constant).
     asfr_c = asfr_all[
         (asfr_all["geoid"] == geoid) & (asfr_all["year"] == BASE_YEAR)
     ][["age", "asfr_per_1000"]].copy()
@@ -236,13 +236,13 @@ plt.show()
 """),
     code("""
 y2050 = totals[totals["year"] == END_YEAR].copy()
-y2023 = totals[totals["year"] == BASE_YEAR].copy()
+y_base = totals[totals["year"] == BASE_YEAR].copy()
 joined = y2050.merge(
-    y2023.rename(columns={"population": "pop_2023"})[["geoid", "scenario", "pop_2023"]],
+    y_base.rename(columns={"population": "pop_base"})[["geoid", "scenario", "pop_base"]],
     on=["geoid", "scenario"], how="left",
 )
 joined["pct_change"] = (
-    100.0 * (joined["population"] / joined["pop_2023"] - 1.0)
+    100.0 * (joined["population"] / joined["pop_base"] - 1.0)
 )
 print(f"{END_YEAR} populations and % change from {BASE_YEAR}:")
 piv = joined.pivot_table(index="geography", columns="scenario", values="population")
@@ -258,7 +258,7 @@ print(piv_pct.round(1).to_string())
     md("""
 ### 4b. 2050 % change ranking
 
-The cohort sorted by baseline % change from 2023, with low/high
+The cohort sorted by baseline % change from the base year, with low/high
 scenarios shown as the bracket. Lets you see which counties have the
 widest scenario range as well as the central trajectory.
 """),
@@ -290,7 +290,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 5. Age structure — Washington 2023 vs 2050 baseline pyramid
+## 5. Age structure — Washington base-year vs 2050 baseline pyramid
 """),
     code("""
 def age_pyramid(forecasts: pd.DataFrame, geoid: str, year: int, scenario: str = "baseline"):
@@ -301,11 +301,11 @@ def age_pyramid(forecasts: pd.DataFrame, geoid: str, year: int, scenario: str = 
     ].copy()
     return sub.pivot_table(index="age", columns="sex", values="population", aggfunc="sum")
 
-p2023 = age_pyramid(forecasts, WASHINGTON, 2023)
+p_base = age_pyramid(forecasts, WASHINGTON, BASE_YEAR)
 p2050 = age_pyramid(forecasts, WASHINGTON, 2050)
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True, sharex=True)
-for ax, (df, year) in zip(axes, [(p2023, 2023), (p2050, 2050)]):
+for ax, (df, year) in zip(axes, [(p_base, BASE_YEAR), (p2050, 2050)]):
     ax.barh(df.index, -df["M"], height=0.85, color="C0", alpha=0.7, label="Male")
     ax.barh(df.index,  df["F"], height=0.85, color="C1", alpha=0.7, label="Female")
     ax.axvline(0, color="black", linewidth=0.6)
@@ -432,7 +432,7 @@ fig.tight_layout()
 plt.show()
 """),
     code("""
-# Cumulative contribution plot — how much of 2023→2050 total change came from each component?
+# Cumulative contribution plot — how much of base→2050 total change came from each component?
 cum = plot_decomp[["year"]].copy()
 cum["cum_births"] = plot_decomp["births"].cumsum()
 cum["cum_deaths"] = -plot_decomp["deaths"].cumsum()
@@ -473,7 +473,7 @@ if final['cum_delta'] < 0:
 **Reading the decomposition.** The annual stacked bars show the
 three flows for each forecast year, with the black line tracking the
 *net* result (ΔPop). The cumulative plot shows how the total
-2023→2050 population change accumulates. For Washington's baseline,
+base-year→2050 population change accumulates. For Washington's baseline,
 the projected decline comes overwhelmingly from one dominant
 direction — either natural change (B − D, negative as deaths exceed
 births in an aging county) or net migration, depending on which the
@@ -525,8 +525,8 @@ print(f"wrote {out_path}  ({len(forecasts):,} rows)")
     md("""
 ## Notes and caveats
 
-- **Net migration rates** are averaged across only 3 year-pairs
-  (2020-21, 2021-22, 2022-23), all of which include pandemic-era
+- **Net migration rates** are averaged across 4 year-pairs (2020-21,
+  2021-22, 2022-23, 2023-24), all of which include pandemic-era
   disruptions. The baseline projection therefore has a built-in
   "recent trends continue" assumption that may be more pessimistic
   than Cornell PAD's pre-pandemic vintage.
@@ -535,7 +535,7 @@ print(f"wrote {out_path}  ({len(forecasts):,} rows)")
   tracts cluster near the NY state median e(0), so the bias is
   expected to be small.
 - **ASFR** uses the national 2023 age pattern scaled to each county's
-  observed 2023 total births. The age pattern is held fixed across
+  observed base-year total births. The age pattern is held fixed across
   forecast years; only the *level* (via the scaling factor) reflects
   county-specific data. NYSDOH-by-mother's-age data would let us
   refine the county pattern (issue #2).

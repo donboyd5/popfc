@@ -28,7 +28,7 @@ The Washington County population forecast in five sections:
 2. Cohort context: Washington vs five demographic neighbors.
 3. Decomposition: how much of the decline is natural change (births −
    deaths) vs net migration.
-4. Age structure: 2023 vs 2050 pyramids.
+4. Age structure: 2024 vs 2050 pyramids.
 5. Town view: trajectory per MCD, town shares of the county.
 
 At the end, the notebook regenerates the `data_final/` exports
@@ -51,6 +51,7 @@ pd.set_option("display.width", 160)
 pd.set_option("display.max_columns", 40)
 
 WASHINGTON = FULL_FIPS
+BASE_YEAR = 2024  # Forecast base year — driven by the latest SYA vintage (V2024).
 
 # Load the key artifacts produced by Notebooks 01-09.
 hist = pd.read_parquet(DATA_INTERIM / "population_reconciled.parquet")
@@ -78,12 +79,12 @@ pad_wash = pad[pad["geoid"] == WASHINGTON][["year", "population"]].rename(column
 
 print("Washington County — key milestones:")
 piv = wash.pivot_table(index="year", columns="scenario", values="population").round(0).astype(int)
-print(piv.loc[[2023, 2030, 2040, 2050]].to_string())
+print(piv.loc[[BASE_YEAR, 2030, 2040, 2050]].to_string())
 print()
-print(f"Decline 2023 → 2050: "
-      f"low  {int(piv.loc[2050, 'low']) - int(piv.loc[2023, 'low']):+,}  ({100*(piv.loc[2050,'low']/piv.loc[2023,'low']-1):+.1f}%)")
-print(f"                       baseline {int(piv.loc[2050, 'baseline']) - int(piv.loc[2023, 'baseline']):+,}  ({100*(piv.loc[2050,'baseline']/piv.loc[2023,'baseline']-1):+.1f}%)")
-print(f"                       high {int(piv.loc[2050, 'high']) - int(piv.loc[2023, 'high']):+,}  ({100*(piv.loc[2050,'high']/piv.loc[2023,'high']-1):+.1f}%)")
+print(f"Decline {BASE_YEAR} → 2050: "
+      f"low  {int(piv.loc[2050, 'low']) - int(piv.loc[BASE_YEAR, 'low']):+,}  ({100*(piv.loc[2050,'low']/piv.loc[BASE_YEAR,'low']-1):+.1f}%)")
+print(f"                       baseline {int(piv.loc[2050, 'baseline']) - int(piv.loc[BASE_YEAR, 'baseline']):+,}  ({100*(piv.loc[2050,'baseline']/piv.loc[BASE_YEAR,'baseline']-1):+.1f}%)")
+print(f"                       high {int(piv.loc[2050, 'high']) - int(piv.loc[BASE_YEAR, 'high']):+,}  ({100*(piv.loc[2050,'high']/piv.loc[BASE_YEAR,'high']-1):+.1f}%)")
 """),
     # ---------------------------------------------------------------
     code("""
@@ -103,8 +104,8 @@ low = wash[wash["scenario"] == "low"].sort_values("year")
 high = wash[wash["scenario"] == "high"].sort_values("year")
 ax.fill_between(low["year"], low["population"], high["population"],
                 color="C0", alpha=0.18, label="low–high range")
-ax.axvline(2023, color="black", linewidth=0.5, alpha=0.5)
-ax.text(2023.3, ax.get_ylim()[1] * 0.97, "base year",
+ax.axvline(BASE_YEAR, color="black", linewidth=0.5, alpha=0.5)
+ax.text(BASE_YEAR + 0.3, ax.get_ylim()[1] * 0.97, "base year",
         ha="left", va="top", fontsize=9, color="black")
 ax.set_title("Washington County, NY — population history and forecast")
 ax.set_xlabel("year"); ax.set_ylabel("population")
@@ -117,7 +118,7 @@ plt.show()
     md("""
 ## 2. Cohort context — Washington vs neighbors
 
-Baseline scenario only, indexed to 100 at 2023 to make trajectory
+Baseline scenario only, indexed to 100 at the base year to make trajectory
 shape easier to compare across counties of different sizes.
 """),
     code("""
@@ -127,15 +128,15 @@ for geoid, name in VALIDATION_COHORT.items():
     sub = sub.groupby("year")["population"].sum().reset_index().sort_values("year")
     if sub.empty:
         continue
-    base = float(sub.loc[sub["year"] == 2023, "population"].iloc[0])
+    base = float(sub.loc[sub["year"] == BASE_YEAR, "population"].iloc[0])
     sub["indexed"] = 100.0 * sub["population"] / base
     lw = 2.0 if geoid == WASHINGTON else 1.0
     alpha = 1.0 if geoid == WASHINGTON else 0.7
     ax.plot(sub["year"], sub["indexed"], linewidth=lw, alpha=alpha,
             label=name, marker="o", markersize=2)
 ax.axhline(100, color="grey", linewidth=0.6)
-ax.set_title("Cohort trajectories — baseline scenario, indexed to 2023 = 100")
-ax.set_xlabel("year"); ax.set_ylabel("population (2023 = 100)")
+ax.set_title(f"Cohort trajectories — baseline scenario, indexed to {BASE_YEAR} = 100")
+ax.set_xlabel("year"); ax.set_ylabel(f"population ({BASE_YEAR} = 100)")
 ax.grid(True, alpha=0.3)
 ax.legend()
 fig.tight_layout()
@@ -149,13 +150,13 @@ end = (
 )
 end["county"] = end["geoid"].map(VALIDATION_COHORT)
 base = (
-    county_fc[(county_fc["year"] == 2023) & (county_fc["scenario"] == "baseline")]
+    county_fc[(county_fc["year"] == BASE_YEAR) & (county_fc["scenario"] == "baseline")]
     .groupby(["geoid"])["population"].sum()
 )
-end["pop_2023"] = end["geoid"].map(base)
-end["pct_change"] = 100 * (end["population"] / end["pop_2023"] - 1)
-print("Cohort 2023 → 2050, baseline:")
-print(end[["county", "pop_2023", "population", "pct_change"]]
+end["pop_base"] = end["geoid"].map(base)
+end["pct_change"] = 100 * (end["population"] / end["pop_base"] - 1)
+print(f"Cohort {BASE_YEAR} → 2050, baseline:")
+print(end[["county", "pop_base", "population", "pct_change"]]
       .rename(columns={"population": "pop_2050"})
       .sort_values("pct_change")
       .to_string(index=False, float_format=lambda x: f'{x:.1f}'))
@@ -176,7 +177,7 @@ from popfc.models.fertility import (
 # Births per year from the forecast.
 asfr = pd.read_parquet(DATA_INTERIM / "asfr.parquet")
 wash_asfr = (
-    asfr[(asfr["geoid"] == WASHINGTON) & (asfr["year"] == 2023)]
+    asfr[(asfr["geoid"] == WASHINGTON) & (asfr["year"] == BASE_YEAR)]
     .set_index("age")["asfr_per_1000"].astype(float)
 )
 
@@ -215,21 +216,21 @@ deaths_hist = (
     .drop_duplicates(subset="year", keep="last")
     .set_index("year")["value"].astype(float)
 )
-# Use the 2023 rate going forward as a hold-constant approximation.
-death_rate_2023 = float(deaths_hist.iloc[-1])
-deaths_fc = (totals * death_rate_2023 / 1000.0).rename("deaths_approx")
+# Use the latest observed rate going forward as a hold-constant approximation.
+death_rate_base = float(deaths_hist.iloc[-1])
+deaths_fc = (totals * death_rate_base / 1000.0).rename("deaths_approx")
 
 decomp = pd.concat([totals, delta, births_df.rename("births"), deaths_fc], axis=1)
 decomp["natural_change_approx"] = decomp["births"] - decomp["deaths_approx"]
 decomp["net_migration_approx"] = decomp["delta_total"] - decomp["natural_change_approx"]
 print("Approximate annual decomposition, Washington baseline:")
-print(decomp.loc[2024:2050:5].round(0).astype("Int64").to_string())
+print(decomp.loc[BASE_YEAR + 1:2050:5].round(0).astype("Int64").to_string())
 print()
-print("Cumulative 2023-2050:")
-print(f"  Total change:       {int(totals.loc[2050] - totals.loc[2023]):+,}")
+print(f"Cumulative {BASE_YEAR}-2050:")
+print(f"  Total change:       {int(totals.loc[2050] - totals.loc[BASE_YEAR]):+,}")
 print(f"  Natural change:     {int(decomp['natural_change_approx'].iloc[1:].sum()):+,}")
 print(f"  Net migration:      {int(decomp['net_migration_approx'].iloc[1:].sum()):+,}")
-print("(Approximation: deaths use the 2023 rate × population each year. "
+print(f"(Approximation: deaths use the latest observed rate × population each year. "
       "True engine values include survival aging within each cohort.)")
 """),
     # ---------------------------------------------------------------
@@ -320,18 +321,18 @@ flows rather than projecting either component separately.
 """),
     # ---------------------------------------------------------------
     md("""
-## 4. Age structure — Washington 2023 vs 2050
+## 4. Age structure — Washington base-year vs 2050
 """),
     code("""
 def pyramid(df, year, scenario="baseline"):
     sub = df[(df["geoid"] == WASHINGTON) & (df["year"] == year) & (df["scenario"] == scenario)]
     return sub.pivot_table(index="age", columns="sex", values="population", aggfunc="sum")
 
-p23 = pyramid(county_fc, 2023)
+p_base = pyramid(county_fc, BASE_YEAR)
 p50 = pyramid(county_fc, 2050)
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True, sharex=True)
-for ax, (df, year, color_m, color_f) in zip(axes, [(p23, 2023, "C0", "C1"), (p50, 2050, "C0", "C1")]):
+for ax, (df, year, color_m, color_f) in zip(axes, [(p_base, BASE_YEAR, "C0", "C1"), (p50, 2050, "C0", "C1")]):
     ax.barh(df.index, -df["M"], height=0.85, color=color_m, alpha=0.7, label="Male")
     ax.barh(df.index,  df["F"], height=0.85, color=color_f, alpha=0.7, label="Female")
     ax.axvline(0, color="black", linewidth=0.6)
@@ -347,10 +348,10 @@ plt.show()
 # Headline aging stats
 def share_over_65(p):
     return float(p.loc[65:][["M", "F"]].sum().sum()) / float(p[["M", "F"]].sum().sum())
-print(f"Share of population aged 65+: 2023 {100*share_over_65(p23):.1f}%, 2050 {100*share_over_65(p50):.1f}%")
+print(f"Share of population aged 65+: {BASE_YEAR} {100*share_over_65(p_base):.1f}%, 2050 {100*share_over_65(p50):.1f}%")
 def share_under_18(p):
     return float(p.loc[:17][["M", "F"]].sum().sum()) / float(p[["M", "F"]].sum().sum())
-print(f"Share of population aged <18: 2023 {100*share_under_18(p23):.1f}%, 2050 {100*share_under_18(p50):.1f}%")
+print(f"Share of population aged <18: {BASE_YEAR} {100*share_under_18(p_base):.1f}%, 2050 {100*share_under_18(p50):.1f}%")
 """),
     # ---------------------------------------------------------------
     md("""
@@ -419,7 +420,7 @@ for name, p in paths.items():
 | File                             | Purpose                                |
 |----------------------------------|----------------------------------------|
 | `summary_headline.csv`           | One-row-per-scenario county totals at key years |
-| `washington_history.csv`         | Reconciled annual pop 2000-2024        |
+| `washington_history.csv`         | Reconciled annual pop 2000-2025        |
 | `washington_components.csv`      | Births / deaths / migration history    |
 | `county_forecast_totals.csv`     | Cohort counties × year × scenario      |
 | `county_forecast_agesex.parquet` | Full age × sex × year × scenario       |
@@ -437,7 +438,7 @@ column in every `data_interim/` and `data_final/` artifact.
 
 - 01: reconciled population
 - 02: components of change
-- 03: age × sex stitched 1990-2023
+- 03: age × sex stitched 1990-2024
 - 04: external data quick-look (ACS, NCHS life tables)
 - 05: ASFR
 - 06: survival rates

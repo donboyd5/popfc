@@ -310,6 +310,101 @@ supported by history for these counties.
 """),
     # ---------------------------------------------------------------
     md("""
+## 2.6 Outlier audit — explicit thresholds, statewide
+
+The plot above gives the shape of the residual distribution; this
+section pins down explicit flags so we can see which counties / years
+are problematic. Three independent checks:
+
+1. **Large residual / pop** — `|residual| > 5‰` of mid-year pop (the
+   threshold marked in the plot).
+2. **Births year-over-year jumps** — births in year `y` differ from
+   year `y-1` by > 20% within the same county. Births shouldn't jump
+   that much in a stable population; sharp moves usually indicate a
+   methodology change or data-quality issue.
+3. **Deaths year-over-year jumps** — same idea for deaths. (We do
+   expect a 2020-2021 COVID-era spike statewide; that's real, not a
+   data issue.)
+"""),
+    code("""
+RESID_PERMILLE_THRESH = 5.0
+YOY_JUMP_THRESH = 0.20  # 20% YoY change
+
+# (1) Large residual / pop
+resid_outliers = resdf[resdf["residual_per_mille"].abs() > RESID_PERMILLE_THRESH].copy()
+print(f"(1) |Residual| > {RESID_PERMILLE_THRESH}‰: "
+      f"{len(resid_outliers):>4,} of {len(resdf):,} county-years "
+      f"({100*len(resid_outliers)/len(resdf):.1f}%)")
+print()
+print(f"    Top counties by # of flagged years:")
+print(resid_outliers.groupby("geography").size()
+                    .sort_values(ascending=False).head(10)
+                    .to_string())
+
+# (2) and (3) Year-over-year jumps in births/deaths
+yoy_input = comp_pep_res[comp_pep_res["measure"].isin(["births", "deaths"])][
+    ["geoid", "geography", "year", "measure", "value"]
+].copy()
+yoy_input = yoy_input.sort_values(["geoid", "measure", "year"])
+yoy_input["prev"] = yoy_input.groupby(["geoid", "measure"])["value"].shift(1)
+yoy_input = yoy_input.dropna(subset=["prev"]).copy()
+yoy_input["pct_change"] = (
+    (yoy_input["value"].astype("Float64") - yoy_input["prev"].astype("Float64"))
+    / yoy_input["prev"].astype("Float64")
+)
+
+births_jumps = yoy_input[
+    (yoy_input["measure"] == "births") & (yoy_input["pct_change"].abs() > YOY_JUMP_THRESH)
+]
+deaths_jumps = yoy_input[
+    (yoy_input["measure"] == "deaths") & (yoy_input["pct_change"].abs() > YOY_JUMP_THRESH)
+]
+print()
+print(f"(2) Births YoY change > {int(YOY_JUMP_THRESH*100)}%: {len(births_jumps):>4,} county-years")
+print(f"(3) Deaths YoY change > {int(YOY_JUMP_THRESH*100)}%: {len(deaths_jumps):>4,} county-years "
+      f"(many of these will be COVID 2020-2021 — expected)")
+print()
+
+# Cohort-specific summary.
+cohort_set = set(COHORT_RES.keys())
+ch_resid = resid_outliers[resid_outliers["geoid"].isin(cohort_set)]
+ch_births = births_jumps[births_jumps["geoid"].isin(cohort_set)]
+ch_deaths = deaths_jumps[deaths_jumps["geoid"].isin(cohort_set)]
+print(f"In the cohort (Washington + 5 neighbors):")
+print(f"  Residual outliers:     {len(ch_resid):>3}")
+print(f"  Births YoY jumps:      {len(ch_births):>3}")
+print(f"  Deaths YoY jumps:      {len(ch_deaths):>3}")
+if not ch_deaths.empty:
+    print()
+    print("  Cohort deaths-jump years (likely COVID-related at 2020-2021):")
+    print(ch_deaths[["geography", "year", "prev", "value", "pct_change"]]
+          .sort_values(["geography", "year"])
+          .to_string(index=False, float_format=lambda x: f'{x:,.2f}'))
+"""),
+    md("""
+**Reading this.** A few of these patterns are *expected artifacts*
+rather than data problems:
+
+- **Births YoY jumps** cluster heavily at **2011** and **2021** — the
+  years right after a decennial. PEP's published "births" count for
+  the decennial-seam year (2010, 2020) covers only April-July (the
+  3-month period that contributes to the July-1 estimate), so the
+  following year's full-year count appears as a 3-4× jump. This is
+  why Notebook 05 computes annual births as `rate_births × mid-year-pop / 1000`
+  instead of using the raw count column.
+- **Deaths YoY jumps** at 2020-2021 reflect real COVID excess
+  mortality, not a data issue.
+- **Residual outliers (>5‰)** concentrate in small, volatile
+  counties (Hamilton in particular) and at decennial-seam years where
+  PEP smooths intercensal totals to the new census enumeration but
+  the components don't get re-smoothed.
+
+The cohort counties (Washington and the 5 neighbors) typically show
+**zero** residual outliers and births jumps only at the decennial
+seams. Forecast inputs for these counties are reliable.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 3. PEP count vs rate-reconstruction
 
 PEP also publishes rates per 1,000 mid-year average population

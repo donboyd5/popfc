@@ -62,6 +62,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from popfc.data.acs import load_acs5_group
+from popfc.models.hamilton_perry import aggregate_b01001_to_5yr_bands
 from popfc.paths import DATA_INTERIM
 
 pd.set_option("display.width", 160)
@@ -71,13 +73,120 @@ RURAL_THRESHOLD = 2000
 ANALYSIS_START = 2009  # first available ACS 5-yr vintage end year
 ANALYSIS_END = 2024    # latest available ACS 5-yr vintage end year
 
-agesex = pd.read_parquet(DATA_INTERIM / "town_agesex_history.parquet")
-totals = pd.read_parquet(DATA_INTERIM / "town_total_pop_history.parquet")
+# ACS 5-yr vintages with cached statewide NY MCD B01001 pulls. 2020 missing —
+# Census did not release ACS 5-yr 2016-2020 due to COVID survey disruption.
+ACS_VINTAGES = [2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+                2018, 2019, 2021, 2022, 2023, 2024]
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 0. Build the interim parquets (idempotent)
+
+Two interim parquets feed the analysis below. Both are assembled from
+cached raw inputs (ACS JSON + PEP sub-est CSV) so this section is
+re-runnable: it will rebuild the parquets if they're missing or
+out-of-date.
+"""),
+    code("""
+def _build_town_agesex_history() -> pd.DataFrame:
+    frames = []
+    for y in ACS_VINTAGES:
+        acs = load_acs5_group(
+            "B01001", year=y, geography="county subdivision",
+            state_fips="36", county_fips="*", refresh=False,
+        )
+        agg = aggregate_b01001_to_5yr_bands(acs)
+        agg["vintage_year_end"] = int(y)
+        agg["vintage_year_start"] = int(y) - 4
+        agg["vintage_midpoint_year"] = int(y) - 2
+        agg["vintage_label"] = f"acs5_{int(y)-4}_{int(y)}"
+        frames.append(agg)
+    history = pd.concat(frames, ignore_index=True)
+    cols = ["geoid", "geography",
+            "vintage_year_start", "vintage_year_end", "vintage_midpoint_year",
+            "vintage_label", "sex",
+            "age_band_start", "age_band_end", "population"]
+    history = history[cols].sort_values(
+        ["geoid", "vintage_year_end", "sex", "age_band_start"]
+    ).reset_index(drop=True)
+    for c in ["population", "vintage_year_start", "vintage_year_end",
+              "vintage_midpoint_year", "age_band_start", "age_band_end"]:
+        history[c] = history[c].astype("Int64")
+    return history
+
+
+def _build_town_total_pop_history(agesex: pd.DataFrame) -> pd.DataFrame:
+    sub = pd.read_csv("data_raw/census/2020-plus/sub-est2025.csv",
+                      encoding="latin-1", dtype=str)
+    ny_mcd = sub[(sub["STATE"] == "36") & (sub["SUMLEV"] == "061")].copy()
+    ny_mcd["geoid"] = ny_mcd["STATE"] + ny_mcd["COUNTY"] + ny_mcd["COUSUB"]
+    annual_year_cols = [c for c in ny_mcd.columns if c.startswith("POPESTIMATE")]
+    annual = ny_mcd.melt(
+        id_vars=["STATE", "COUNTY", "geoid", "NAME"],
+        value_vars=annual_year_cols,
+        var_name="year_col", value_name="population",
+    )
+    annual["year"] = annual["year_col"].str.extract(r"(\\d{4})", expand=False).astype(int)
+    annual["population"] = pd.to_numeric(annual["population"], errors="coerce").astype("Int64")
+    pep_frame = pd.DataFrame({
+        "state_fips":  annual["STATE"], "county_fips": annual["COUNTY"],
+        "geoid":       annual["geoid"], "geography":   annual["NAME"],
+        "year":        annual["year"].astype("Int64"),
+        "kind":        "estimate",
+        "population":  annual["population"],
+        "source":      "census_pep", "vintage": "v2025_subest",
+        "notes":       "MCD total from sub-est2025.csv SUMLEV 061",
+    })
+    acs_tot = (
+        agesex.groupby(["geoid", "geography",
+                        "vintage_year_start", "vintage_year_end",
+                        "vintage_midpoint_year", "vintage_label"], dropna=False)
+              ["population"].sum().reset_index()
+    )
+    acs_tot["state_fips"] = acs_tot["geoid"].str[:2]
+    acs_tot["county_fips"] = acs_tot["geoid"].str[2:5]
+    acs_frame = pd.DataFrame({
+        "state_fips":  acs_tot["state_fips"], "county_fips": acs_tot["county_fips"],
+        "geoid":       acs_tot["geoid"], "geography": acs_tot["geography"],
+        "year":        acs_tot["vintage_midpoint_year"].astype("Int64"),
+        "kind":        "acs5_midpoint",
+        "population":  acs_tot["population"].astype("Int64"),
+        "source":      "census_acs5", "vintage": acs_tot["vintage_label"],
+        "notes":       "ACS 5-yr midpoint, B01001 summed across 18 bands × 2 sexes",
+    })
+    out = pd.concat([pep_frame, acs_frame], ignore_index=True)
+    return out.sort_values(["geoid", "year", "source"]).reset_index(drop=True)
+
+
+agesex_path = DATA_INTERIM / "town_agesex_history.parquet"
+totals_path = DATA_INTERIM / "town_total_pop_history.parquet"
+
+if not agesex_path.exists():
+    print(f"building {agesex_path.name} ...")
+    history = _build_town_agesex_history()
+    DATA_INTERIM.mkdir(parents=True, exist_ok=True)
+    history.to_parquet(agesex_path, index=False)
+    print(f"  wrote {len(history):,} rows")
+else:
+    print(f"reusing existing {agesex_path.name}")
+
+agesex = pd.read_parquet(agesex_path)
+
+if not totals_path.exists():
+    print(f"building {totals_path.name} ...")
+    totals = _build_town_total_pop_history(agesex)
+    totals.to_parquet(totals_path, index=False)
+    print(f"  wrote {len(totals):,} rows")
+else:
+    print(f"reusing existing {totals_path.name}")
+
+totals = pd.read_parquet(totals_path)
 components = pd.read_parquet(DATA_INTERIM / "county_components.parquet")
 
-print(f"town_agesex_history: {len(agesex):,} rows, {agesex['geoid'].nunique():,} MCDs")
-print(f"town_total_pop_history: {len(totals):,} rows")
-print(f"county_components: {len(components):,} rows")
+print()
+print(f"town_agesex_history:     {len(agesex):>7,} rows, {agesex['geoid'].nunique():,} MCDs")
+print(f"town_total_pop_history:  {len(totals):>7,} rows")
+print(f"county_components:       {len(components):>7,} rows")
 """),
     # ---------------------------------------------------------------
     md("""

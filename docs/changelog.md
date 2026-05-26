@@ -11,7 +11,62 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-25 — `feat/outlier-audit` (in progress)
+## 2026-05-26 — `feat/scenarios-historical` (in progress)
+
+Batch 3 of the review: replace multiplicative migration scenarios with
+a historical-reference framework grounded in each county's own
+observed experience.
+
+The old design applied scalar multipliers (`net_mig_multiplier`) to
+per-cohort migration rates. That works poorly when rates are signed
+(e.g., Washington has positive net in-migration of kids aged 0-4 and
+negative net out-migration at working ages — multiplying by 1.30
+amplifies *both*, which is rarely the intended scenario). It also
+produced uninterpretable scenario bands: the multiplier ±30% on small
+net numbers gave very narrow ranges (~1,700 person spread at 2050 for
+Washington).
+
+The new design:
+
+- **`popfc.models.migration.historical_reference_periods()`** — per
+  county, find best/worst/current rolling 5-year windows of net
+  migration (PEP `net_mig` / mid-year pop). Returns rate + year-range
+  per window.
+- **`popfc.models.cohort_component.project_one_county()`** gains a new
+  `net_mig_delta` argument: an additive shift to per-(age, sex)
+  migration rates. Effective rate is `m × multiplier + delta`. The
+  multiplier is kept for back-compat; new code uses `delta`.
+- **Notebook 08** computes per-county scenarios from
+  `historical_reference_periods()`:
+  - baseline = current rate (delta = 0)
+  - low = if migration matched the *worst* observed 5-year window
+    (delta = worst_rate − current_rate)
+  - high = if migration matched the *best* observed window
+- **New methodology section** (`docs/methodology.md`) explains the
+  framework and reports the Washington reference periods.
+- **5 new tests** for `historical_reference_periods` covering schema,
+  three-windows-per-county, ordering invariants, sparse-data handling,
+  and arithmetic correctness. 135 tests pass.
+
+**Washington 2050 (baseline) didn't change** — that's by construction,
+since baseline uses the same per-cohort rates as before. The
+**range widens dramatically** because low/high now reflect real
+extremes:
+
+- Old (multiplier): low 46,642 / baseline 47,567 / high 48,366 — spread 1,724.
+- New (historical): low 43,203 / baseline 47,567 / high 51,469 — spread 8,266.
+
+Concretely, Washington's "worst observed 5-year migration window"
+(2013-2017) was -0.41%/yr; if migration matched that going forward,
+the county lands at ~43,200 by 2050 (-28%). "Best observed"
+(2018-2022, brief near-balanced period) was -0.05%/yr; matching that
+yields ~51,500 (-14%).
+
+Status: in progress on the branch.
+
+---
+
+## 2026-05-25 — `feat/outlier-audit` (merged to main `5ca03e6`)
 
 Batch 2 of the post-V2025-refresh review: explicit outlier-detection
 sections in every notebook that produces forecast inputs, plus a

@@ -232,6 +232,109 @@ def cohort_change_ratios(
     return pd.DataFrame(rows)
 
 
+def cohort_change_ratios_multi_vintage(
+    agesex_history: pd.DataFrame,
+    *,
+    cap: tuple[float, float] | None = (0.85, 1.20),
+    vintage_step: int = 5,
+) -> pd.DataFrame:
+    """Compute CCRs averaged across every available 5-year vintage pair.
+
+    Most rural MCDs have ~1,000-3,000 residents. A single 5-year-vintage
+    CCR over a single age × sex cell is noisy (one ACS sample's wobble can
+    drive a CCR from 0.9 to 1.5). Averaging across all overlapping
+    5-year-apart vintage pairs in `agesex_history` reduces variance while
+    preserving the cohort change signal.
+
+    For NY MCDs with the project's town_agesex_history (15 vintages,
+    2009-2024 except 2020), this yields ~10 5-year pairs per cohort —
+    e.g., 2007→2012, 2008→2013, …, 2017→2022 (with one gap at 2013→2018
+    because Census didn't release ACS 2016-2020).
+
+    Parameters
+    ----------
+    agesex_history
+        Long-format frame from Notebook 11 §0 with columns
+        ``geoid``, ``geography``, ``sex``, ``age_band_start``,
+        ``age_band_end``, ``population``, ``vintage_midpoint_year``,
+        plus a vintage label.
+    cap
+        Per-pair clip applied BEFORE averaging. Default ``(0.85, 1.20)``
+        matches the production single-vintage cap. Pass ``None`` to
+        disable clipping (averaging alone may not damp small-area noise
+        sufficiently).
+    vintage_step
+        Required midpoint-year gap between vintages in a pair. Default 5
+        (one 5-year band per step).
+
+    Returns
+    -------
+    Long-format with columns:
+        geoid, sex, age_band_start, ccr, ccr_pairs_avg, n_pairs,
+        n_pairs_clipped
+    where ``ccr`` is the averaged (post-clip) value used in projection
+    and ``ccr_pairs_avg`` carries the raw arithmetic mean of clipped
+    pairs (currently equal to ``ccr`` — they would diverge only if a
+    future second-pass cap were applied on the average).
+    """
+    required = {"geoid", "sex", "age_band_start", "age_band_end",
+                "population", "vintage_midpoint_year"}
+    missing = required - set(agesex_history.columns)
+    if missing:
+        raise ValueError(
+            f"agesex_history missing required columns: {sorted(missing)}"
+        )
+
+    midpoint_years = sorted(int(y) for y in agesex_history["vintage_midpoint_year"].unique())
+
+    # Enumerate (t0, t1) midpoint-year pairs separated by exactly vintage_step.
+    pairs: list[tuple[int, int]] = [
+        (m0, m0 + vintage_step)
+        for m0 in midpoint_years
+        if (m0 + vintage_step) in set(midpoint_years)
+    ]
+    if not pairs:
+        raise ValueError(
+            f"No vintage-pair separations of {vintage_step} years found in "
+            f"the supplied agesex_history midpoint years: {midpoint_years}"
+        )
+
+    # Build CCR contributions per pair.
+    accum: dict[tuple[str, str, int], list[float]] = {}
+    clipped_counts: dict[tuple[str, str, int], int] = {}
+
+    for t0_mid, t1_mid in pairs:
+        pop_t0 = agesex_history[agesex_history["vintage_midpoint_year"] == t0_mid][
+            ["geoid", "geography", "sex", "age_band_start", "age_band_end",
+             "population", "vintage_midpoint_year"]
+        ].rename(columns={"vintage_midpoint_year": "year"})
+        pop_t1 = agesex_history[agesex_history["vintage_midpoint_year"] == t1_mid][
+            ["geoid", "geography", "sex", "age_band_start", "age_band_end",
+             "population", "vintage_midpoint_year"]
+        ].rename(columns={"vintage_midpoint_year": "year"})
+        # `cohort_change_ratios` returns ccr (post-clip), ccr_raw, clipped.
+        ccr_one = cohort_change_ratios(pop_t0, pop_t1, cap=cap)
+        for _, r in ccr_one.iterrows():
+            key = (r["geoid"], r["sex"], int(r["age_band_start"]))
+            accum.setdefault(key, []).append(float(r["ccr"]))
+            if bool(r["clipped"]):
+                clipped_counts[key] = clipped_counts.get(key, 0) + 1
+
+    out_rows = []
+    for key, vals in accum.items():
+        geoid, sex, start = key
+        out_rows.append({
+            "geoid": geoid, "sex": sex, "age_band_start": int(start),
+            "ccr": float(sum(vals) / len(vals)),
+            "ccr_pairs_avg": float(sum(vals) / len(vals)),
+            "n_pairs": len(vals),
+            "n_pairs_clipped": int(clipped_counts.get(key, 0)),
+        })
+    return pd.DataFrame(out_rows).sort_values(
+        ["geoid", "sex", "age_band_start"]
+    ).reset_index(drop=True)
+
+
 def child_woman_ratios(pop_t1: pd.DataFrame) -> pd.DataFrame:
     """CWR per (geoid, sex of child) at time t1.
 

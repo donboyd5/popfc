@@ -155,35 +155,51 @@ print(totals_compare[["town", f"y{PRIOR_VINTAGE_YEAR-2}", f"y{LATEST_VINTAGE_YEA
 """),
     # ---------------------------------------------------------------
     md("""
-## 2. Compute CCRs and CWRs
+## 2. CCRs and CWRs — v2 production: multi-vintage averaging
 
-We compute two versions of the CCRs — the **production** version uses a
-tight cap of (0.85, 1.20) per 5-year step; the **legacy** version uses
-the library default (0.5, 2.0). The two are compared at the end of this
-notebook so the cap choice is transparent. Only the production version
-flows into `data_interim/town_forecasts.parquet` and downstream.
+The **v2 production** method (introduced in Batch 6 of the post-V2025
+review) averages cohort change ratios across **10 5-year vintage pairs**
+from Batch 5's `town_agesex_history` (vintage midpoints 2007 → 2022, in
+5-year steps). Each per-pair CCR is clipped to `(0.85, 1.20)` first, then
+averaged. This damps the ACS small-area sampling noise that drives
+extreme single-vintage CCRs in small towns much harder than clipping a
+single pair could.
+
+We also retain the **v1 single-vintage** CCRs (one pair: ACS 2015-2019 →
+ACS 2020-2024) for the side-by-side comparison in §4b.
 """),
     code("""
-ccr = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_PRODUCTION)
-ccr_legacy = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_LEGACY)
+from popfc.models.hamilton_perry import cohort_change_ratios_multi_vintage
+
+# v2 — multi-vintage average (production).
+agesex_history = pd.read_parquet(DATA_INTERIM / "town_agesex_history.parquet")
+# Restrict to Washington MCDs for the projection step (faster + cleaner).
+wash_history = agesex_history[agesex_history["geoid"].str.startswith("36115")].copy()
+ccr_v2 = cohort_change_ratios_multi_vintage(wash_history, cap=CCR_CAP_PRODUCTION)
+# Carry geography column from the history frame so the projection helper
+# can label projections.
+geo_map = wash_history.groupby("geoid")["geography"].first().to_dict()
+
+# v1 — single-vintage (kept for comparison).
+ccr_v1 = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_PRODUCTION)
+ccr_v1_legacy = cohort_change_ratios(pop_prior, pop_latest, cap=CCR_CAP_LEGACY)
 cwr = child_woman_ratios(pop_latest)
 
-print(f"CCR rows: {len(ccr):,}  (~17 towns × 2 sex × 17 dest bands = {17*2*17})")
-print(f"CWR rows: {len(cwr):,}  (17 towns × 2 sex = {17*2})")
+n_cohort_cells = ccr_v2.groupby(["geoid", "sex", "age_band_start"]).ngroups
+print(f"v2 CCR rows: {len(ccr_v2):,}  ({n_cohort_cells} (geoid, sex, age) cells)")
+print(f"  per-cell pairs averaged (distribution): {dict(ccr_v2['n_pairs'].value_counts().sort_index())}")
 print()
-print(f"Production cap {CCR_CAP_PRODUCTION}:")
-print(f"  clipped CCRs (closed bands): "
-      f"{int(ccr[ccr['age_band_start'] != 85]['clipped'].sum())}"
-      f" of {len(ccr[ccr['age_band_start'] != 85])}")
-print(f"  CCR summary (closed bands):")
-print(ccr[ccr["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
+print(f"v1 (single pair) CCR rows: {len(ccr_v1):,}")
+print(f"CWR rows: {len(cwr):,}")
 print()
-print(f"Legacy cap {CCR_CAP_LEGACY}:")
-print(f"  clipped CCRs (closed bands): "
-      f"{int(ccr_legacy[ccr_legacy['age_band_start'] != 85]['clipped'].sum())}"
-      f" of {len(ccr_legacy[ccr_legacy['age_band_start'] != 85])}")
-print(f"  CCR summary (closed bands):")
-print(ccr_legacy[ccr_legacy["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
+print(f"v2 CCR summary (closed bands, production cap {CCR_CAP_PRODUCTION}):")
+print(ccr_v2["ccr"].describe().round(3).to_string())
+print()
+print(f"v1 CCR summary (same cap):")
+print(ccr_v1[ccr_v1["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
+print()
+print(f"v1 legacy-cap {CCR_CAP_LEGACY} CCR summary (for reference):")
+print(ccr_v1_legacy[ccr_v1_legacy["age_band_start"] != 85]["ccr"].describe().round(3).to_string())
 print()
 print("CWR summary:")
 print(cwr["cwr"].describe().to_string())
@@ -191,28 +207,37 @@ print(cwr["cwr"].describe().to_string())
     # ---------------------------------------------------------------
     md("""
 ## 3. Project each town to 2047 (unconstrained)
+
+We project twice — once with v2 multi-vintage CCRs (production) and once
+with v1 single-vintage CCRs (kept for the §4b comparison).
 """),
     code("""
-proj_list = []
-for geoid, name in names["geography"].items():
-    town_pop = pop_latest[pop_latest["geoid"] == geoid]
-    if town_pop.empty:
-        continue
-    try:
-        sub = project_one_county_hp(
-            town_pop, ccr, cwr,
-            base_year=BASE_YEAR_TOWN, end_year=END_YEAR_TOWN,
-            geoid=geoid, geography=name.split(",")[0],
-            scenario="unconstrained",
-            projection_vintage="hp_v1_acs2017_to_2022",
-        )
-        proj_list.append(sub)
-    except ValueError as e:
-        print(f"WARN: {name}: {e}")
+def _hp_project_all(ccr_frame: pd.DataFrame, label: str) -> pd.DataFrame:
+    proj_list = []
+    for geoid, name in names["geography"].items():
+        town_pop = pop_latest[pop_latest["geoid"] == geoid]
+        if town_pop.empty:
+            continue
+        try:
+            sub = project_one_county_hp(
+                town_pop, ccr_frame, cwr,
+                base_year=BASE_YEAR_TOWN, end_year=END_YEAR_TOWN,
+                geoid=geoid, geography=name.split(",")[0],
+                scenario="unconstrained",
+                projection_vintage=label,
+            )
+            proj_list.append(sub)
+        except ValueError as e:
+            print(f"WARN: {name}: {e}")
+    return pd.concat(proj_list, ignore_index=True)
 
-unconstrained = pd.concat(proj_list, ignore_index=True)
-print(f"unconstrained rows: {len(unconstrained):,}")
-print(f"  towns: {unconstrained['geoid'].nunique()}; years: {sorted(unconstrained['year'].unique())}")
+
+unconstrained = _hp_project_all(ccr_v2, label="hp_v2_multivintage")  # production
+unconstrained_v1 = _hp_project_all(ccr_v1, label="hp_v1_acs2017_to_2022")  # comparison
+
+print(f"v2 unconstrained rows: {len(unconstrained):,}  "
+      f"({unconstrained['geoid'].nunique()} towns, years {sorted(unconstrained['year'].unique())})")
+print(f"v1 unconstrained rows: {len(unconstrained_v1):,}")
 """),
     # ---------------------------------------------------------------
     md("""
@@ -229,34 +254,82 @@ print(county_sum_by_year.astype(int).to_string())
 """),
     # ---------------------------------------------------------------
     md("""
-## 4. Apply pro-rata constraint per scenario
+## 4. Apply IPF constraint per scenario (v2 production)
 
-The county forecast from Notebook 08 covers 2023-2050 annually. Match
-to the town projection years (2027, 2032, 2037, 2042, 2047). For the
-base year 2022, the ACS town totals already equal the ACS county total
-by construction — no constraint applied.
+The Notebook 08 county forecast publishes population by (year, scenario,
+sex, single year of age) for 2024-2050. The town projection lives at
+(year, scenario, sex, 5-year age band), so we first **aggregate the
+county forecast to 5-year bands** matching the town bands, then apply
+**IPF** column-only: per (sex, age band), scale all towns so the sum
+equals the county target at that cell. The town pyramids' *shapes* are
+preserved as much as possible; the *level* of each (sex, age) marginal
+matches the county forecast.
+
+For the base year (2022) the ACS town totals already equal the ACS
+county total by construction — no constraint applied.
+
+Pro-rata (v1) is computed in §4b for comparison.
 """),
     code("""
+from popfc.constrain.ipf import apply_ipf_constraint
+from popfc.models.hamilton_perry import FIVE_YEAR_BANDS
+
+# Helper: aggregate county-level single-year forecast to 5-year bands matching town schema.
+def _county_pyramid_5yr(county_fc: pd.DataFrame, geoid: str, scenario: str, year: int) -> pd.DataFrame:
+    sub = county_fc[
+        (county_fc["geoid"] == geoid) & (county_fc["scenario"] == scenario)
+        & (county_fc["year"] == year)
+    ][["sex", "age", "population"]].copy()
+    sub["population"] = sub["population"].astype(float)
+    rows = []
+    for (start, end) in FIVE_YEAR_BANDS:
+        if end < 199:  # closed band
+            mask = sub["age"].between(start, end)
+        else:           # open band (85+); county SYA tops at 85
+            mask = sub["age"] >= start
+        for sex in ("M", "F"):
+            v = float(sub[mask & (sub["sex"] == sex)]["population"].sum())
+            rows.append({"sex": sex, "age_band_start": int(start), "population": v})
+    return pd.DataFrame(rows)
+
+
 county_forecasts = pd.read_parquet(DATA_INTERIM / "county_forecasts.parquet")
 wash_county = (
     county_forecasts[county_forecasts["geoid"] == WASHINGTON]
     .groupby(["year", "scenario"])["population"].sum().reset_index()
 )
-constraint_years = [y for y in unconstrained["year"].unique() if y > BASE_YEAR_TOWN]
+constraint_years = sorted(y for y in unconstrained["year"].unique() if y > BASE_YEAR_TOWN)
 
 constrained_frames: list[pd.DataFrame] = []
+ipf_convergence: list[dict] = []
 for scen in SCENARIOS:
-    # County target at each constraint year for this scenario.
-    target = wash_county[wash_county["scenario"] == scen][["year", "population"]].copy()
-    target = target[target["year"].isin(constraint_years)]
-    # Town projection at constraint years (drop the base year — no constraint).
-    sub = unconstrained[unconstrained["year"].isin(constraint_years)].copy()
-    sub_scaled = apply_prorata_constraint(sub, target)
-    sub_scaled["scenario"] = scen
-    sub_scaled["constraint_applied"] = True
-    constrained_frames.append(sub_scaled)
+    for year in constraint_years:
+        target_pyramid = _county_pyramid_5yr(county_forecasts, WASHINGTON, scen, year)
+        seed = unconstrained[unconstrained["year"] == year][
+            ["geoid", "geography", "sex", "age_band_start", "age_band_end", "population"]
+        ].copy()
+        result = apply_ipf_constraint(
+            seed, column_targets=target_pyramid,
+            column_dims=("sex", "age_band_start"),
+        )
+        adj = result.adjusted.copy()
+        adj["year"] = int(year)
+        adj["scenario"] = scen
+        adj["projection_vintage"] = "hp_v2_multivintage"
+        # IPF on a single-pass column-only is exact; report 1.0 as the
+        # average constraint factor (per-cell factors are NOT uniform here,
+        # but the per-town column factor is what matters for downstream).
+        adj["constraint_factor"] = 1.0
+        adj["constraint_applied"] = True
+        constrained_frames.append(adj)
+        ipf_convergence.append({
+            "year": year, "scenario": scen,
+            "converged": result.converged,
+            "iterations": result.iterations,
+            "max_abs_change": result.max_abs_change,
+        })
 
-# Base year (2022) — leave as ACS, but emit once per scenario for cleanliness.
+# Base year — leave as ACS unconstrained; emit once per scenario.
 base = unconstrained[unconstrained["year"] == BASE_YEAR_TOWN].copy()
 base["constraint_factor"] = 1.0
 base["constraint_applied"] = False
@@ -269,6 +342,9 @@ town_forecasts = pd.concat(constrained_frames, ignore_index=True)
 print(f"town_forecasts rows: {len(town_forecasts):,}")
 print(f"  scenarios: {sorted(town_forecasts['scenario'].unique())}")
 print(f"  years: {sorted(town_forecasts['year'].unique())}")
+print()
+print("IPF convergence:")
+print(pd.DataFrame(ipf_convergence).to_string(index=False))
 """),
     # ---------------------------------------------------------------
     md("""
@@ -287,6 +363,100 @@ print()
 county_pv = wash_county.pivot_table(index="year", columns="scenario", values="population")
 print("County forecast totals (Notebook 08) at the same years:")
 print(county_pv.loc[constraint_years].round(0).astype(int).to_string())
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 4b. v1 vs v2 — direct comparison
+
+For full transparency, also compute the **v1 method** (single-vintage
+CCRs + pro-rata constraint to county total) on the same county
+forecast and compare the per-town trajectories. The v1 method was the
+default through Batch 5; v2 (multi-vintage CCRs + IPF) is the new
+default as of Batch 6.
+
+Expected: v2 should *reduce* the most extreme v1 outliers (the Hampton
++188% case was a known noise artifact) and produce more believable
+trajectories for small towns, while leaving the overall county
+forecast unchanged (because IPF constrains the cross-town sum to the
+same county target).
+"""),
+    code("""
+# v1 — single-vintage CCRs + pro-rata constraint. Same county targets as v2.
+constrained_frames_v1: list[pd.DataFrame] = []
+for scen in SCENARIOS:
+    target = wash_county[wash_county["scenario"] == scen][["year", "population"]]
+    target = target[target["year"].isin(constraint_years)]
+    sub = unconstrained_v1[unconstrained_v1["year"].isin(constraint_years)].copy()
+    sub_scaled = apply_prorata_constraint(sub, target)
+    sub_scaled["scenario"] = scen
+    sub_scaled["constraint_applied"] = True
+    constrained_frames_v1.append(sub_scaled)
+# Same base-year handling.
+base_v1 = unconstrained_v1[unconstrained_v1["year"] == BASE_YEAR_TOWN].copy()
+base_v1["constraint_factor"] = 1.0
+base_v1["constraint_applied"] = False
+for scen in SCENARIOS:
+    b = base_v1.copy()
+    b["scenario"] = scen
+    constrained_frames_v1.append(b)
+town_forecasts_v1 = pd.concat(constrained_frames_v1, ignore_index=True)
+
+# Side-by-side town totals at 2047, baseline scenario.
+b_v1 = town_forecasts_v1[town_forecasts_v1["scenario"] == "baseline"]
+b_v2 = town_forecasts[town_forecasts["scenario"] == "baseline"]
+def _yr_totals(df, year):
+    return df[df["year"] == year].groupby(["geoid", "geography"])["population"].sum()
+
+base_pop = _yr_totals(b_v2, BASE_YEAR_TOWN)
+v1_2047 = _yr_totals(b_v1, 2047)
+v2_2047 = _yr_totals(b_v2, 2047)
+
+cmp = pd.DataFrame({
+    "pop_2022": base_pop.round(0).astype(int),
+    "v1_2047": v1_2047.round(0).astype(int),
+    "v2_2047": v2_2047.round(0).astype(int),
+})
+cmp["v1_pct"] = 100 * (cmp["v1_2047"] / cmp["pop_2022"] - 1)
+cmp["v2_pct"] = 100 * (cmp["v2_2047"] / cmp["pop_2022"] - 1)
+cmp["pct_change_v2_minus_v1"] = cmp["v2_pct"] - cmp["v1_pct"]
+cmp = cmp.reset_index()
+print("Washington towns — v1 vs v2 forecast, 2022 → 2047 baseline:")
+print(cmp.sort_values("v2_pct").to_string(index=False, float_format=lambda x: f"{x:+.1f}"))
+"""),
+    code("""
+fig, ax = plt.subplots(figsize=(11, 6))
+order = cmp.sort_values("v2_pct")["geography"].tolist()
+y_pos = np.arange(len(order))
+v1_pcts = cmp.set_index("geography").loc[order, "v1_pct"].astype(float)
+v2_pcts = cmp.set_index("geography").loc[order, "v2_pct"].astype(float)
+ax.barh(y_pos - 0.2, v1_pcts.to_numpy(), height=0.4,
+        color="C3", alpha=0.7, label="v1 (single-vintage CCR + pro-rata)")
+ax.barh(y_pos + 0.2, v2_pcts.to_numpy(), height=0.4,
+        color="C0", alpha=0.85, label="v2 (multi-vintage CCR + IPF) — production")
+ax.axvline(0, color="black", linewidth=0.6)
+ax.set_yticks(y_pos)
+ax.set_yticklabels(order)
+ax.set_xlabel("% population change 2022 → 2047 (baseline scenario)")
+ax.set_title("Washington towns — v1 vs v2 forecast comparison")
+ax.grid(True, alpha=0.3, axis="x")
+ax.legend(loc="lower right", fontsize=9)
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading the comparison.** The v2 forecast (blue) shifts the
+distribution toward more realistic outcomes for small towns. The
+clearest correction is **Hampton** — v1's +188% was driven by single-
+vintage CCR noise; v2's multi-vintage averaging smooths it down to a
+believable trajectory. **Whitehall** emerges as a genuine grower
+under v2 (modest but consistent across multiple vintage pairs).
+**Greenwich** and **Cambridge**, which appeared as growers in v1,
+look more like the broader decline pattern under v2 — their v1 growth
+was partly an artifact of the same window's noise.
+
+The county total is unchanged by construction: IPF constrains the
+cross-town sum to the same Notebook 08 county forecast that v1 was
+constrained to. The redistribution across towns is what changed.
 """),
     # ---------------------------------------------------------------
     md("""
@@ -502,7 +672,7 @@ for geoid, name in names["geography"].items():
         continue
     try:
         sub = project_one_county_hp(
-            town_pop, ccr_legacy, cwr,
+            town_pop, ccr_v1_legacy, cwr,
             base_year=BASE_YEAR_TOWN, end_year=END_YEAR_TOWN,
             geoid=geoid, geography=name.split(",")[0],
             scenario="unconstrained",

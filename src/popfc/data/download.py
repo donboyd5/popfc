@@ -49,7 +49,7 @@ import requests
 # Note: `LATEST_ACS5_YEAR` lives in `popfc.data.acs`, not in `paths.py`. We
 # import it lazily inside the ACS registration callables so this module stays
 # importable even if acs.py changes its public surface.
-from popfc.paths import ACS_DIR, CENSUS_DIR, NCHS_DIR, NYSDOL_DIR, PROJECT_ROOT
+from popfc.paths import ACS_DIR, CENSUS_DIR, IRS_DIR, NCHS_DIR, NYSDOL_DIR, PROJECT_ROOT
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +236,46 @@ register(DownloadSpec(
     fetcher=_nysdol_fetcher,
     exists_check=lambda _spec: _nysdol_existing() is not None,
 ))
+
+
+# ---------------------------------------------------------------------------
+# IRS SOI county-to-county migration (gross flows: inflow + outflow)
+#
+# Schema (per the 2022-2023 vintage Users Guide):
+#   - countyinflow<YYZZ>.csv: who moved INTO each county
+#       columns: y2_statefips, y2_countyfips, y1_statefips, y1_countyfips,
+#                y1_state, y1_countyname, n1 (returns), n2 (exemptions), agi
+#       y1 = origin (prior year), y2 = destination (current year)
+#   - countyoutflow<YYZZ>.csv: who moved OUT of each county
+#       columns: y1_statefips, y1_countyfips, y2_statefips, y2_countyfips,
+#                y2_state, y2_countyname, n1, n2, agi
+#
+# n1 ≈ households, n2 ≈ individuals, agi in thousands of $.
+# Age × sex detail is NOT available at county level — state-level files
+# (stateinflow / stateoutflow, plus the 2223inmigall.csv age×AGI cross)
+# carry that.
+# ---------------------------------------------------------------------------
+
+_IRS_VINTAGE_DEFAULT = "2223"  # 2022-2023 = latest as of 2026-05-26
+
+
+def _irs_county_migration_spec(direction: str, vintage_tag: str) -> DownloadSpec:
+    """Build a DownloadSpec for one IRS county migration file (inflow or outflow)."""
+    assert direction in ("inflow", "outflow"), direction
+    return DownloadSpec(
+        name=f"irs_county_{direction}_{vintage_tag}",
+        target=IRS_DIR / f"county{direction}{vintage_tag}.csv",
+        description=(
+            f"IRS SOI county-level migration {direction} ({vintage_tag[:2]}-{vintage_tag[2:]} tax years);"
+            f" origin-destination flows with returns / exemptions / AGI"
+        ),
+        source_url=f"https://www.irs.gov/pub/irs-soi/county{direction}{vintage_tag}.csv",
+        fetcher=_http_get_to_file,
+    )
+
+
+register(_irs_county_migration_spec("inflow", _IRS_VINTAGE_DEFAULT))
+register(_irs_county_migration_spec("outflow", _IRS_VINTAGE_DEFAULT))
 
 
 # ---------------------------------------------------------------------------

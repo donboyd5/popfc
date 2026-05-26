@@ -12,10 +12,22 @@ __pycache__/
 venv/
 env/
 
-# Data directories — not committed (too large, often license-restricted).
-# Fetch raw data via `python -m popfc.data.download` (for sources with
-# automated download specs) or by manual copy from upstream URLs.
-data_raw/
+# Data directories.
+#
+# Most of `data_raw/` is gitignored — it's bulky (~150 MB ACS JSON cache,
+# ~200 MB Census archives, etc.) and refreshable from URLs. We DO commit
+# the small foundational sources (~10 MB total) inline so the project can
+# be reproduced even if upstream URLs change. Plus the MANIFEST.toml,
+# which records SHA-256 + size + source URL for EVERY file under
+# data_raw/ regardless of whether it's tracked.
+data_raw/*
+!data_raw/MANIFEST.toml
+!data_raw/cdc/
+!data_raw/cornell/
+!data_raw/nchs/
+!data_raw/nysdol/
+
+# Interim and final outputs — regenerable from data_raw/ via the notebooks.
 data_interim/
 data_final/
 

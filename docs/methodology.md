@@ -144,11 +144,51 @@ engine is county-agnostic — you pass in the survival schedule, ASFR
 schedule, and net-migration rate vector, plus a base-year P(x, sex)
 pyramid, and it iterates from a base year to an end year.
 
-**Scenario knobs** (current implementation): scalar multipliers
-`asfr_multiplier` and `net_mig_multiplier`. Baseline uses 1.0/1.0; low and
-high vary these. See `notebooks/_build_08_county_forecast.py` for the
-current values. **There's a known issue with the multiplier approach when
-net migration is negative** — see the upcoming scenario-redesign branch.
+**Scenario knobs.** The engine accepts three scalar knobs:
+
+- `asfr_multiplier` — uniform multiplier on ASFR. Baseline uses 1.0; low
+  uses 0.85 (≈ −15% TFR); high uses 1.15. Fertility is always positive
+  so a multiplier is well-defined.
+- `net_mig_multiplier` — uniform multiplier on the per-(age, sex)
+  migration rate vector. Kept for "amplify-the-shape" experiments;
+  rarely the right tool when net migration is signed (positive at some
+  ages, negative at others — a multiplier amplifies both, which usually
+  isn't what's intended).
+- `net_mig_delta` — additive shift to every per-(age, sex) migration
+  rate. **This is the preferred way to encode scenarios.** The effective
+  rate becomes `m(x, sex) × multiplier + delta`. The shape is preserved
+  (kids still move in more than working age, etc.); only the *level*
+  shifts.
+
+**Historical-reference scenarios.** Starting with Batch 3 of the post-
+V2025-refresh review, scenarios are anchored to **each county's own
+observed migration experience**, not arbitrary multipliers. We compute
+`historical_reference_periods()` (in `popfc.models.migration`) which
+returns, per county, three rolling 5-year-window summaries of net
+migration (PEP `net_mig` / mid-year pop):
+
+- **current**: the most recent complete 5-year window
+- **best**: the window with the highest (most positive / least negative) average
+- **worst**: the window with the lowest average
+
+Scenarios are then:
+
+- baseline = current rate (`net_mig_delta = 0`)
+- high = if migration matched the *best* observed window
+  (`net_mig_delta = best_rate − current_rate`)
+- low = if migration matched the *worst* observed window
+  (`net_mig_delta = worst_rate − current_rate`)
+
+For Washington (cohort baseline as of the 2026-05-26 refresh):
+- current (2021-2025): -0.20%/yr
+- best (2018-2022, brief recovery): -0.05%/yr (close to balanced)
+- worst (2013-2017): -0.41%/yr
+
+The resulting low/high scenario range widens by ~5× compared with the
+old multiplicative approach (~8,300 persons spread at 2050 vs ~1,700)
+*and* the numbers are interpretable: "what if Washington had its worst
+observed 5-year migration window from now to 2050?" "What if it matched
+its best?" These are grounded counterfactuals.
 
 ### Survival rates from life tables
 
@@ -365,7 +405,7 @@ We chose certain methodological branches and not others. For the record:
 | National-pattern + local-level ASFR | Per-county per-age ASFR estimation (too noisy at county scale) |
 | Single net migration rate per (age, sex) | Separate domestic + international rates (planned — Batch 4) |
 | Pro-rata constraint (town → county) | IPF (matches marginals; planned future refinement) |
-| Scalar scenario multipliers | Historical-reference scenarios (planned — Batch 3) |
+| Historical-reference scenarios (additive `net_mig_delta`) | Scalar multipliers (kept for back-compat; deprecated for migration) |
 
 ---
 

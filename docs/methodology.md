@@ -426,6 +426,57 @@ For full coverage details see `docs/data_dictionary.md`. Briefly:
 | ACS 5-year | Detailed county + MCD tables | Annual (current: 2020-2024) | Town age × sex (HP base); migration profiles (B07001, B06001) |
 | Cornell PAD | NY county projections (pre-pandemic) | Static | Benchmark for the engine's county forecasts |
 
+### Town historical data + rural-growth analysis (Batch 5)
+
+For descriptive analysis of NY MCDs (towns + cities) over the last
+~15 years, we assemble statewide historical age × sex and total-pop
+records:
+
+- **`data_interim/town_agesex_history.parquet`** — every NY MCD's
+  5-year ACS B01001 age × sex pyramid, across 15 vintages
+  (2009-2024, except 2020 which Census did not release due to COVID
+  disruption of survey collection). 1,024 MCDs × 15 vintages × 2
+  sexes × 18 5-year age bands ≈ 552k rows.
+- **`data_interim/town_total_pop_history.parquet`** — annual MCD
+  totals from PEP `sub-est2025` (2020-2025) plus 5-year-midpoint
+  totals from the ACS frame above (~2007 to ~2022). Long-format,
+  multi-source: callers can prefer PEP for recent years and ACS
+  midpoints elsewhere.
+
+Both are built by Notebook 11 §0 (idempotent — reused if already on
+disk) from the cached raw inputs.
+
+**Rural-town analysis (Notebook 11).** Filter MCDs to pop ≤ 2,000 at
+the latest observation; rank by % change between earliest and latest
+ACS vintage. Decompose change into components by **allocating
+county-level PEP components to towns** using age-aware proportional
+shares:
+
+- **Births**: town's share of county women aged 15-49.
+- **Deaths**: town's share of county pop aged 65+.
+- **Domestic + international migration**: town's share of county
+  total population.
+
+The age-share denominators come from the ACS 5-year vintages and are
+linearly interpolated to each year. **The allocation preserves county
+totals exactly** (verified per-county: allocated sum equals published
+county component to float precision).
+
+This is a deliberate **first-pass approximation**:
+
+- Assumes per-allocator rates are uniform within a county (e.g.,
+  births per woman 15-49 are the same across all towns in a county).
+  Town-level *rate* variation is real but unobserved.
+- Intra-county moves cancel out at the county level, so they can't be
+  attributed to either inflow or outflow shares — even though they
+  are real movements between rural and exurban towns within a county.
+- The PEP component series starts at 2011; full-year-pair coverage
+  begins 2012.
+
+NYSDOH publishes vital statistics at sub-county geography in some
+forms; pulling those (deferred — see GitHub issue #2) would replace
+this allocator with direct measurement for births and deaths.
+
 ### Engineering conventions (also see CLAUDE.md)
 
 - **Statewide by default**: loaders never hardcode Washington FIPS.

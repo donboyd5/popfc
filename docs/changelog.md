@@ -11,7 +11,41 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/mortality-usaleep` (in progress)
+## 2026-05-26 — `feat/data-archival` (in progress)
+
+Post-review follow-up #1: reproducibility infrastructure. Closes the
+loop on a concern surfaced during the V2025 refresh (Census reorganizes
+URLs every few years; NYSDOH/IRS data can get withdrawn).
+
+**Code:**
+
+- **`scripts/build_manifest.py`** — generator that walks `data_raw/`,
+  computes SHA-256 + size + mtime per file, looks up source URLs in
+  the existing `popfc.data.download` registry, and writes
+  `data_raw/MANIFEST.toml`. ~120 lines, no external deps beyond what
+  the project already has.
+- **`data_raw/MANIFEST.toml`** — generated. 102 files indexed,
+  ~470 MB total. Committed.
+- **Inline-commit of ~10 MB foundational sources**: `data_raw/cdc/`,
+  `data_raw/cornell/`, `data_raw/nchs/`, `data_raw/nysdol/`. These
+  are the static or near-static reference inputs (CDC Bridged-Race
+  discontinued; NCHS NVSR life tables fixed-annual; Cornell PAD
+  one-time; NYSDOL Socrata pulls small). Project now reproduces from
+  a fresh clone even if all upstream URLs vanish.
+- **`.gitignore`** updated to selectively re-include the small subdirs
+  + MANIFEST.toml while keeping the heavy ones (acs ~150 MB,
+  census ~200 MB, irs ~66 MB, nysdoh ~26 MB) ignored.
+
+**Open follow-ups remaining after this:**
+
+- USALEEP qx-ratio adjustment to NVSR (Batch 7 finding)
+- Migration engine extension (Batch 4b — domestic + international as
+  separate engine inputs)
+- NYSDOH sub-county vital statistics pulls (issue #2)
+
+---
+
+## 2026-05-26 — `feat/mortality-usaleep` (merged to main `a8bdff9`)
 
 Batch 7 of the review (the last in the originally-planned set):
 USALEEP-based mortality diagnostic for Washington.

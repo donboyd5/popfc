@@ -297,10 +297,59 @@ overlapping pair available since the 2020 census base.
   in successive years. PEP doesn't publish that sub-county. ACS gives
   it but only as 5-year averages, which smear the year-over-year signal.
 
-Implementation: `popfc.models.migration.build_net_migration_rates`. Upcoming
-work (Batch 4 of the post-V2025 review) will decompose migration into
-domestic and international using the published net flows + ACS age × sex
-mobility profiles.
+Implementation: `popfc.models.migration.build_net_migration_rates`.
+
+### Migration decomposition — domestic vs international, what we can see
+
+PEP publishes the migration components separately at the **county-year**
+level (`domestic_mig` and `international_mig`, both as NET counts). The
+historical decomposition is visible in Notebook 02 §4b for every cohort
+county — for example, Washington 2022-2024 shows international ramping
+from ~+15/yr historically to ~+175/yr (post-COVID rebound) while
+domestic stays negative ~ −160/yr. The two flows respond to different
+forces (housing markets, labor, immigration policy, post-COVID effects)
+and an aggregate "net migration" number conceals that.
+
+**IRS SOI** county migration data (loaded via `popfc.data.irs`) adds
+the **gross** in/out detail PEP doesn't publish — Washington 2022-2023
+had 2,364 individuals move in (US-domestic) and 2,292 move out, net
++72. Useful for cross-source validation and for answering "how many
+people moved in?" / "how many moved out?" as distinct questions, even
+when the *net* is small.
+
+**Data limitations to keep in mind:**
+
+- PEP publishes domestic + international net per county but **no age ×
+  sex** breakdown for either component. The cohort-component engine
+  applies a single net migration rate per (age, sex); separating that
+  into domestic + international rate vectors requires estimating each
+  component's age × sex shape from external sources.
+- IRS county data has **no age or sex breakdown** at the county level
+  — only state-level files carry age bands.
+- ACS B07001 ("Geographic Mobility by Age") gives **county-level age
+  bands** for inflows: "moved from different county same state",
+  "different state", and "abroad". But it covers INFLOWS only (where
+  you lived a year ago vs now), so it can't directly source outflows.
+- Net residual = inflow − outflow at each age, so estimating outflows
+  requires either symmetric assumptions or an external data source
+  (state-level migration profiles, IRS state-by-age data, etc.).
+
+**Engine extension (deferred to Batch 4b).** A clean implementation
+would estimate per-component age × sex profiles by combining:
+
+- ACS B07001 county-level inflow profiles (age × component-of-origin)
+  for the **domestic vs international shape of inflows**.
+- Demographic-rate assumptions or state-level IRS migration-by-age
+  data for the **outflow age profile** (a known compromise).
+- PEP-published net domestic + net international counts as the
+  per-year levels to match.
+
+The engine would then accept two rate vectors (`net_mig_domestic`
+and `net_mig_international`) plus the existing `net_mig_delta` knob.
+Scenarios could vary one or both independently — e.g., "what if
+domestic out-migration recovered but international stayed at its
+post-COVID elevated level?" That work is genuinely a separate piece
+because of the per-component shape estimation effort.
 
 ### Hamilton-Perry
 

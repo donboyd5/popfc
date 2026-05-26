@@ -11,7 +11,69 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/scenarios-historical` (in progress)
+## 2026-05-26 — `feat/migration-decomposition` (in progress)
+
+Batch 4 of the review: migration depth. Surfacing the
+domestic-vs-international split + IRS gross flow detail in the
+historical analysis. The original Batch 4 scope also included
+extending the engine to project domestic and international
+separately, but that work has been re-scoped to a follow-up batch
+(see "deferred" below).
+
+**What landed:**
+
+- **`popfc.data.irs.load_irs_county_migration`** — new loader for
+  IRS SOI county migration data (the gross in/out flows from tax-
+  return address changes). Schema documented in
+  `src/popfc/data/irs.py`; handles all summary-row sentinels
+  (96/97/98 = totals; 57-59 = aggregate buckets; non-migrant rows
+  detected by partner_geoid == anchor_geoid).
+- **Two new DownloadSpecs** for the 2022-2023 vintage:
+  `countyinflow2223.csv` and `countyoutflow2223.csv`. Filename pattern
+  is parameterized so back-vintages (e.g., 2021-22, 2020-21) can be
+  added by registering with a different `vintage_tag`.
+- **Discovery / correction**: the pre-existing `data_raw/irs/*.csv`
+  files (filenames like `22incyallagi.csv`) turned out to be
+  county-level INCOME tax statistics (returns, AGI, wages by income
+  bracket), NOT migration data. Decoded "in" as "income" rather than
+  "inflow". The actual migration files are now in the same directory
+  under `countyinflow<YYZZ>.csv` / `countyoutflow<YYZZ>.csv`.
+- **Notebook 02 §4b** — Historical migration decomposition for all
+  six cohort counties. Annual bars of `domestic_mig` +
+  `international_mig` + net per county, plus the IRS 2022-2023 gross
+  flow lookup. Surfaces patterns like Washington's post-COVID
+  international uptick (+15/yr → +175/yr) and the cross-source
+  net-domestic agreement.
+- **`docs/methodology.md`** — new "Migration decomposition — domestic
+  vs international, what we can see" section. Documents what each
+  source publishes, the age × sex coverage gap (PEP and IRS county
+  don't carry age), and the data limitations that constrain a clean
+  engine extension.
+
+**Deferred to a follow-up `feat/migration-decomposition-engine` batch:**
+
+The original Batch 4 plan included extending `project_one_county()`
+with separate `net_mig_domestic` and `net_mig_international` rate
+vectors so scenarios could vary the two components independently
+("what if domestic recovers but international stays elevated?").
+After exploring the data more closely:
+
+- ACS B07001 gives county-level age bands for INFLOWS only (lived-1-
+  year-ago breakdown by age × component-of-origin) — useful for the
+  inflow age shape but doesn't directly source outflow profiles.
+- County-level IRS has no age detail (only state-level files do).
+- Estimating per-component age × sex profiles requires a compromise
+  on outflows (symmetric-to-inflow assumption, or state-level IRS
+  by-age data) and a small design conversation.
+
+This is meaningful work (~1-2 days) that should get its own branch +
+explicit design choice on the outflow assumption. The methodology
+section now documents what the extension would do and what
+constraints it would face.
+
+---
+
+## 2026-05-26 — `feat/scenarios-historical` (merged to main `84da257`)
 
 Batch 3 of the review: replace multiplicative migration scenarios with
 a historical-reference framework grounded in each county's own

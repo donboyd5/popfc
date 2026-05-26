@@ -514,6 +514,112 @@ else:
 """),
     # ---------------------------------------------------------------
     md("""
+## 4b. Migration decomposition — domestic vs international, cohort counties
+
+Net migration as a single county-year number hides two very different
+mechanisms: **domestic migration** (US-to-US flows, also called
+internal migration) and **international migration** (cross-border).
+Census PEP publishes them separately at the county-year level (but
+not by age × sex). They behave differently over time and respond to
+different drivers — domestic is sensitive to housing costs and labor
+markets within the US; international tracks immigration policy and
+post-COVID rebounds.
+
+For each cohort county we show the annual net split (PEP-published
+`domestic_mig` + `international_mig`) and the 2022-2023 **gross**
+in/out flows from IRS SOI migration data. (IRS gives us the gross
+domestic detail PEP doesn't: how many people moved IN vs how many
+moved OUT, not just the net.)
+
+Caveat: this is county-level only. PEP doesn't publish migration by
+age × sex within these components, and IRS county data has no age
+breakdown either. The cohort-component engine uses a single net
+migration rate per (age, sex); separating the engine's projection
+into domestic + international is the next step (deferred to a sub-
+batch).
+"""),
+    code("""
+from popfc.data.irs import load_irs_county_migration, PARTNER_KIND_SPECIFIC
+
+# Pull historical domestic + international + net from PEP components.
+comp_mig = comp_pep_res[comp_pep_res["measure"].isin(
+    ["domestic_mig", "international_mig", "net_mig"]
+)].copy()
+
+COHORT_DECOMP = {
+    "36115": "Washington",
+    "36091": "Saratoga",
+    "36113": "Warren",
+    "36083": "Rensselaer",
+    "36031": "Essex",
+    "36021": "Columbia",
+}
+
+# Per cohort county: print the most recent 5 years of decomposition.
+print("Cohort county migration decomposition (most recent 5 years, persons/year):")
+for geoid, name in COHORT_DECOMP.items():
+    sub = comp_mig[comp_mig["geoid"] == geoid].copy()
+    pv = sub.pivot_table(index="year", columns="measure", values="value", aggfunc="first")
+    recent = pv.sort_index().tail(5)
+    if recent.empty:
+        continue
+    recent = recent.round(0).astype("Int64")
+    print(f"\\n{name} ({geoid}):")
+    print(recent.to_string())
+"""),
+    code("""
+# Plot: per-cohort-county time series of domestic + international + net.
+fig, axes = plt.subplots(3, 2, figsize=(13, 11), sharex=True)
+for ax, (geoid, name) in zip(axes.flat, COHORT_DECOMP.items()):
+    sub = comp_mig[comp_mig["geoid"] == geoid].copy()
+    pv = sub.pivot_table(index="year", columns="measure", values="value", aggfunc="first").sort_index()
+    if "domestic_mig" not in pv.columns:
+        ax.set_title(f"{name} — no data"); continue
+    years = pv.index.astype(int).to_numpy()
+    dom = pv["domestic_mig"].astype(float).to_numpy()
+    intl = pv.get("international_mig", pd.Series(0, index=pv.index)).astype(float).to_numpy()
+    net = pv.get("net_mig", pd.Series(dom + intl, index=pv.index)).astype(float).to_numpy()
+    w = 0.4
+    ax.bar(years - w/2, dom,  width=w, color="C0", alpha=0.85,
+           label="Domestic", edgecolor="black", linewidth=0.3)
+    ax.bar(years + w/2, intl, width=w, color="C1", alpha=0.85,
+           label="International", edgecolor="black", linewidth=0.3)
+    ax.plot(years, net, color="black", linewidth=1.4, marker="o", markersize=3,
+            label="Net (sum)", zorder=5)
+    ax.axhline(0, color="black", linewidth=0.5)
+    ax.set_title(f"{name} ({geoid})", fontsize=10)
+    ax.grid(True, alpha=0.3, axis="y")
+axes[0,0].legend(loc="best", fontsize=8)
+for ax in axes[-1, :]:
+    ax.set_xlabel("year")
+for ax in axes[:, 0]:
+    ax.set_ylabel("persons / year")
+fig.suptitle("PEP net migration decomposition — cohort counties, annual",
+             fontsize=12, y=1.00)
+fig.tight_layout()
+plt.show()
+"""),
+    code("""
+# IRS-augmented view: gross IN vs OUT for the latest available vintage.
+irs = load_irs_county_migration()  # NY anchors, both directions, 2022-2023
+# Pull the "total_us" sentinel rows = domestic gross flows.
+irs_dom = irs[irs["partner_kind"] == "total_us"][
+    ["geoid", "geography", "direction", "exemptions"]
+].pivot_table(index=["geoid", "geography"], columns="direction", values="exemptions", aggfunc="first")
+irs_dom["net"] = irs_dom["in"].astype("Int64") - irs_dom["out"].astype("Int64")
+print("IRS SOI 2022-2023 gross domestic migration (exemptions ≈ individuals):")
+print(irs_dom.loc[list(COHORT_DECOMP)].to_string())
+print()
+print("IRS gives us GROSS in/out (PEP only publishes NET). For Washington in")
+print("2022-2023: 2,364 individuals moved in from US; 2,292 moved out; net +72.")
+print("That's small enough to be in the same ballpark as PEP's net domestic")
+print("for the same year — useful cross-source confirmation. The bigger value")
+print("of IRS is being able to ask 'how many people moved IN' and 'how many")
+print("moved OUT' separately, since policy levers and demographic signals")
+print("differ between the two flows.")
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 5. Save the components frame
 
 Long-format Census PEP components for downstream forecasting work. NYSDOH

@@ -22,12 +22,25 @@ alone; negative means the opposite.
 
 ## Scenarios
 
-The simplest scenario API exposes two scalar multipliers:
+The scenario API exposes three scalar knobs:
 
 - `asfr_multiplier` — uniform multiplier on ASFR (e.g., 0.85 for "low
-  fertility", 1.15 for "high")
-- `net_mig_multiplier` — uniform multiplier on net-migration rates
-  (closed bands and boundary alike)
+  fertility", 1.15 for "high"). Fertility is non-negative so a
+  multiplier is well-defined.
+- `net_mig_multiplier` — uniform multiplier on net-migration rates.
+  Useful for "amplify the existing shape" experiments. **Caveat:** a
+  county with positive in-migration at young ages and negative
+  out-migration at working ages will see *both* amplified by a
+  multiplier, which is rarely the intent. Prefer `net_mig_delta` for
+  level shifts.
+- `net_mig_delta` — additive shift to per-cohort migration rates. The
+  age × sex *shape* of migration is preserved; only the *level* moves.
+  Use this to encode scenarios like "if Washington's migration matched
+  its best historical 5-year window" (see
+  `popfc.models.migration.historical_reference_periods`).
+
+Effective per-cohort rate:
+    `m_effective(x, sex) = m_rate(x, sex) × net_mig_multiplier + net_mig_delta`
 
 More expressive scenarios (age-specific overrides, time-varying paths)
 are out of scope for v1.
@@ -95,6 +108,7 @@ def _compile_inputs(
     srb: float,
     asfr_multiplier: float,
     net_mig_multiplier: float,
+    net_mig_delta: float = 0.0,
 ) -> _CompiledRates:
     """Turn the three input frames into fast lookup arrays."""
     # Survival arrays per sex.
@@ -159,10 +173,13 @@ def _compile_inputs(
         # Fill any missing source-age rates with 0 (the engine has to do
         # something — a noisy outlier county-year might miss a few cells).
         full = closed.reindex(range(0, top_code_age - 1)).fillna(0.0)
-        m_closed[sex] = full.to_numpy() * net_mig_multiplier
+        # m_effective = m * multiplier + delta. Multiplier scales the shape;
+        # delta shifts the level. Both default to identity (× 1.0 + 0.0).
+        m_closed[sex] = full.to_numpy() * net_mig_multiplier + net_mig_delta
         b = m_sex[m_sex["band_type"] == "boundary"]
         m_boundary[sex] = (
-            float(b["m_rate"].iloc[0]) * net_mig_multiplier if not b.empty else 0.0
+            float(b["m_rate"].iloc[0]) * net_mig_multiplier + net_mig_delta
+            if not b.empty else net_mig_delta
         )
 
     # ASFR array indexed by mother's age REPRO_AGE_MIN..REPRO_AGE_MAX.
@@ -279,10 +296,20 @@ def project_one_county(
     top_code_age: int = 85,
     asfr_multiplier: float = 1.0,
     net_mig_multiplier: float = 1.0,
+    net_mig_delta: float = 0.0,
     scenario: str = "baseline",
     projection_vintage: str | None = None,
 ) -> pd.DataFrame:
     """Project one county's population from base_year to end_year (inclusive).
+
+    The migration knobs combine multiplicatively and additively:
+
+        m_effective(x, sex) = m_rate(x, sex) × net_mig_multiplier + net_mig_delta
+
+    `net_mig_delta` is the preferred way to express level shifts (e.g.,
+    "if migration matched this historical 5-year window"); see
+    `popfc.models.migration.historical_reference_periods`. `net_mig_multiplier`
+    is kept for amplify-the-shape experiments.
 
     Returns a long-format DataFrame conforming to PROJECTION_COLUMNS, with
     one row per (year, sex, age) including the base year.
@@ -292,7 +319,11 @@ def project_one_county(
     if net_mig_geoid is None:
         net_mig_geoid = geoid
     if projection_vintage is None:
-        projection_vintage = f"engine_v1_asfr_x{asfr_multiplier}_netmig_x{net_mig_multiplier}"
+        # Encode all three knobs so different scenarios are distinguishable.
+        projection_vintage = (
+            f"engine_v2_asfr_x{asfr_multiplier:.3f}"
+            f"_netmig_x{net_mig_multiplier:.3f}_d{net_mig_delta:+.5f}"
+        )
 
     rates = _compile_inputs(
         survival, asfr, net_mig,
@@ -302,6 +333,7 @@ def project_one_county(
         srb=srb,
         asfr_multiplier=asfr_multiplier,
         net_mig_multiplier=net_mig_multiplier,
+        net_mig_delta=net_mig_delta,
     )
 
     if geography is None:

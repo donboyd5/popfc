@@ -11,7 +11,65 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/town-forecast-v2` (in progress)
+## 2026-05-26 — `feat/mortality-usaleep` (in progress)
+
+Batch 7 of the review (the last in the originally-planned set):
+USALEEP-based mortality diagnostic for Washington.
+
+**Code:**
+
+- New `popfc.data.nchs.usaleep_county_life_table()` — aggregates
+  tract-level USALEEP life tables into a county-level abridged life
+  table. Per band: weighted mean qx and Lx across tracts; lx
+  reconstructed from a 100,000 radix; ex re-derived from T(x)/l(x).
+  Equal-weight by default; accepts a population-weighted `weights`
+  argument when tract pop is available. Caught and documented a
+  subtle bug along the way: Lx in USALEEP tract tables is *per-100k
+  radix*, so summing across tracts (the naive aggregation) would
+  multiply person-years by tract count. The mean is correct.
+- Small unrelated cleanup: replaced the IPF divide-by-zero
+  `np.where` warning with a clean `np.divide(..., where=)` pattern.
+
+**Empirical finding** (Notebook 06 §6b):
+
+- Washington county-aggregate e(0) (USALEEP 2010-2015): **81.43**
+- NY statewide aggregate e(0) (same period, same method): **80.26**
+- **+1.17 year Washington mortality advantage**, consistent across all
+  age bands
+
+For reference, the forecast's current input (NY NVSR 2022, post-COVID)
+has e(0) = 79.53. The pre-COVID USALEEP era looks ~0.7 years better
+overall.
+
+**Decision**: keep NY NVSR 2022 as the forecast's default mortality
+schedule. Documented reasons:
+
+- Period match (NVSR 2022 → forecast base 2024) is closer than
+  USALEEP 2010-2015 → 2024.
+- USALEEP is abridged (11 bands); switching the forecast to USALEEP
+  would require abridged-to-single-year disaggregation.
+- Forecast impact of applying the Washington advantage is modest
+  (~+200-500 residents at 2050 against a baseline of 47,567).
+
+**Queued as future refinement**: apply the Washington-vs-NY USALEEP qx
+*ratio* as a multiplicative adjustment to NVSR NY 2022 single-year
+rates. Captures the Washington advantage while keeping the period
+match. The tract aggregator built here is the building block needed.
+
+**Tests:** 6 new for the aggregator. **161 total pass.**
+
+This concludes the originally-planned review batch list (Batches
+1-7). Open follow-ups noted across the changelog:
+- `feat/data-archival` — manifest + small files inline (deferred from
+  the V2025 refresh)
+- `feat/migration-decomposition-engine` (Batch 4b) — extend the
+  engine to project domestic + international separately
+- USALEEP qx-ratio adjustment to NVSR (this batch)
+- NYSDOH sub-county vital statistics pulls (issue #2)
+
+---
+
+## 2026-05-26 — `feat/town-forecast-v2` (merged to main `51e3465`)
 
 Batch 6: better Washington town forecasts. Two methodology upgrades
 targeting the most-flagged weakness from earlier batches — small-area

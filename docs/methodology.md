@@ -351,6 +351,45 @@ domestic out-migration recovered but international stayed at its
 post-COVID elevated level?" That work is genuinely a separate piece
 because of the per-component shape estimation effort.
 
+### USALEEP-based county mortality differentials (diagnostic only)
+
+Batch 7 adds a tract-to-county life-table aggregator
+(`popfc.data.nchs.usaleep_county_life_table`) and uses it in Notebook
+06 §6b to compare Washington's mortality experience to NY state's,
+both via the same USALEEP 2010-2015 data. The aggregator does proper
+weighted-mean of tract qx and Lx values per age band, then rebuilds
+lx via cumulative survival from a 100,000 radix and ex via T(x)/l(x).
+
+**Empirical finding**: Washington's aggregate e(0) is **81.43**; NY
+statewide aggregate is **80.26** — a **+1.17 year** mortality advantage,
+consistent across all age bands (about +1.0 to +1.3 years per band).
+For reference, the forecast's current input (NY NVSR 2022) gives
+e(0) = 79.53 — lower than either USALEEP figure because it reflects
+post-COVID period mortality.
+
+**Why the forecast still uses NY NVSR 2022 as the default**:
+
+- **Period match.** Our forecast base year is 2024. NVSR 2022 is the
+  closest period available; USALEEP 2010-2015 predates COVID, so
+  applying it as-is would understate current mortality.
+- **Granularity.** USALEEP publishes 11 abridged age bands (Under 1,
+  1-4, 5-14, ..., 85+). The cohort-component engine needs single-year
+  survival probabilities; abridged-to-single-year disaggregation
+  (Coale-Demeny or Heligman-Pollard fits) introduces its own
+  assumptions.
+- **Modest forecast impact.** Translated through the engine, the
+  Washington advantage would yield +200 to +500 additional projected
+  residents at 2050 against a baseline of 47,567 — meaningful but
+  small relative to the migration and fertility scenarios already
+  driving the spread.
+
+**Future refinement (queued).** Apply the Washington-vs-NY USALEEP qx
+*ratio* as a multiplicative adjustment to NVSR NY 2022 single-year
+rates. This preserves the period match (2022) while capturing the
+Washington-specific mortality differential. Implementation needs only
+the ratio computation in the loader + an opt-in flag in the engine;
+the tract aggregator already exists.
+
 ### Town forecast v2 — multi-vintage CCRs + IPF (current default)
 
 The first iteration of the town forecast (Batch 4 of the original

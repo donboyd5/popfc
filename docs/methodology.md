@@ -351,6 +351,52 @@ domestic out-migration recovered but international stayed at its
 post-COVID elevated level?" That work is genuinely a separate piece
 because of the per-component shape estimation effort.
 
+### Town forecast v2 — multi-vintage CCRs + IPF (current default)
+
+The first iteration of the town forecast (Batch 4 of the original
+project, pre-review) used Hamilton-Perry with **two ACS vintages**
+(2015-2019 and 2020-2024) to compute CCRs, then a **pro-rata
+constraint** to make the town sum match the county forecast. Two
+known weaknesses:
+
+1. **CCR noise.** With small populations (Hampton ~1,100) and one
+   5-year-window CCR per cohort, ACS sampling noise dominates. A
+   single noisy cell can compound to a runaway projection — Hampton
+   in v1 came out at +188% by 2047, almost certainly an artifact.
+
+2. **Pro-rata is shape-blind.** It multiplies every cell in a town by
+   one factor to match the town total to its county-share target. The
+   *cross-town* age × sex pyramid (i.e., who is what age across the
+   county) doesn't have to match the county forecast's pyramid at all.
+
+The **v2 default** (Batch 6 of the review) addresses both:
+
+- **Multi-vintage CCR averaging.** `cohort_change_ratios_multi_vintage()`
+  reads `town_agesex_history` (15 ACS vintages 2009-2024 except 2020,
+  built in Batch 5) and computes the per-cohort CCR for every
+  available 5-year-midpoint pair, then averages. For Washington MCDs
+  this typically yields ~10 pairs per (geoid, sex, age_band) cell.
+  Per-pair CCRs are clipped to `(0.85, 1.20)` before averaging — one
+  noisy year-pair can't dominate the average. The 10-pair signal is
+  much more stable than the 1-pair signal.
+- **IPF column-only constraint.** `popfc.constrain.ipf.apply_ipf_constraint()`
+  with `column_targets = county_forecast_pyramid_5yr_bands` (no row
+  targets) scales every town's (sex, age_band) cell so the cross-town
+  sum at each cell exactly matches the county forecast at that cell.
+  Single-pass when row targets aren't given (mathematically a
+  per-column scaling); equivalent to "rake to a single marginal".
+  When both row and column targets are given the function does full
+  biproportional fitting iteratively. Useful for future scenarios
+  where we want town totals AND county pyramid simultaneously.
+
+For Washington's MCDs, v2 corrects the most extreme v1 outliers
+(Hampton +188% → −9.4%) and surfaces real growers v1 missed
+(Whitehall +35%). The county total is unchanged by construction.
+
+The v1 method is computed alongside v2 in Notebook 09 §4b for direct
+comparison; only v2 is saved to `data_interim/town_forecasts.parquet`
+and consumed downstream.
+
 ### Hamilton-Perry
 
 Hamilton-Perry (HP) is the small-area projection method we use for

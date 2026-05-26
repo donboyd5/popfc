@@ -11,7 +11,61 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/town-historicals` (in progress)
+## 2026-05-26 — `feat/town-forecast-v2` (in progress)
+
+Batch 6: better Washington town forecasts. Two methodology upgrades
+targeting the most-flagged weakness from earlier batches — small-area
+ACS sampling noise compounding into runaway per-town projections.
+
+**Code:**
+
+- **`popfc.models.hamilton_perry.cohort_change_ratios_multi_vintage()`**
+  — new helper that reads `town_agesex_history` (built in Batch 5)
+  and averages CCRs across every available 5-year-midpoint vintage
+  pair. For NY MCDs this yields ~10 pairs per (geoid, sex, age_band)
+  cell. Per-pair CCRs are clipped to `(0.85, 1.20)` before averaging
+  so no single noisy year-pair can dominate.
+- **`popfc.constrain.ipf` — new module** with `apply_ipf_constraint()`.
+  Single-pass column-only constraint when row targets are omitted
+  (equivalent to per-column raking); biproportional iterative fitting
+  when both marginals are specified. Replaces pro-rata as the town
+  forecast's default constraint.
+
+**Notebook 09:**
+
+- §2 now computes both v1 (single-vintage) and v2 (multi-vintage)
+  CCRs side by side.
+- §3 projects all 17 towns under both CCR methods.
+- §4 applies IPF (v2 production) using the county-forecast 5-yr-band
+  pyramid as the column marginal. Verified: IPF identity holds
+  exactly (cross-town sums match the county pyramid to float
+  precision at every (sex, age_band) cell).
+- §4b new: direct v1-vs-v2 side-by-side comparison per town with
+  back-to-back bar chart.
+
+**Headline corrections (baseline scenario, 2022 → 2047):**
+
+| Town | v1 (pro-rata) | v2 (IPF + multi-vintage) |
+|---|---|---|
+| Hampton | +188% (noise artifact) | **−9.4%** |
+| Whitehall | small decline | **+35.4%** (real grower revealed) |
+| Greenwich | +29% | −32.3% (v1 growth was partly noise) |
+| Cambridge | +20% | −30.0% (same) |
+| Dresden | sharp decline | −50.1% |
+
+The county total is unchanged — IPF constrains the cross-town sum to
+the same county forecast that v1 was constrained to. The
+redistribution across towns is what improved.
+
+**Tests:** 8 new (4 multi-vintage CCR, 4 IPF). **155 total pass.**
+
+**Methodology.md** gains a "Town forecast v2 — multi-vintage CCRs +
+IPF (current default)" section in §Methods documenting both
+improvements and the v1 weaknesses they address.
+
+---
+
+## 2026-05-26 — `feat/town-historicals` (merged to main `6f61aff`)
 
 Batch 5 of the review: statewide NY town historical data + a
 rural-growth descriptive notebook.

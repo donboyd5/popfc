@@ -383,12 +383,27 @@ post-COVID period mortality.
   small relative to the migration and fertility scenarios already
   driving the spread.
 
-**Future refinement (queued).** Apply the Washington-vs-NY USALEEP qx
-*ratio* as a multiplicative adjustment to NVSR NY 2022 single-year
-rates. This preserves the period match (2022) while capturing the
-Washington-specific mortality differential. Implementation needs only
-the ratio computation in the loader + an opt-in flag in the engine;
-the tract aggregator already exists.
+**Now implemented as the production schedule for Washington.** The
+queued refinement is live. New helpers `usaleep_qx_band_ratio()` and
+`apply_qx_ratio_to_life_table()` in `popfc.data.nchs` compute the
+per-band Washington/NY qx ratio and apply it as a multiplicative
+adjustment to NVSR NY 2022 single-year qx. Period match preserved
+(NVSR 2022, contemporaneous with the forecast base 2024); Washington
+mortality differential captured.
+
+Notebook 06 §6c builds the Washington-adjusted schedule and writes
+both `data_interim/survival_rates.parquet` (geoid `36115` added
+alongside `36000`) and `data_interim/life_tables.parquet` (so
+Notebook 08's recompute path discovers the new rows). Notebook 08
+uses `survival_geoid="36115"` for Washington and `"36000"` (NY state)
+for the other 5 cohort counties.
+
+Forecast impact: Washington 2050 baseline rose **47,567 → 47,990**
+(+423 residents), right in the predicted +200-500 range. e(0) under
+the adjusted schedule is 80.11 vs the NVSR NY 2022 baseline of 79.53
+(+0.58 years — less than the raw +1.17 USALEEP differential because
+per-band ratios mix in both directions; some bands favor Washington
+and some don't).
 
 ### Town forecast v2 — multi-vintage CCRs + IPF (current default)
 

@@ -11,7 +11,51 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/data-archival` (in progress)
+## 2026-05-26 — `feat/mortality-usaleep-ratio` (in progress)
+
+Post-review follow-up #2: closes the Batch 7 "queued refinement" by
+turning the USALEEP qx-ratio adjustment into the production mortality
+schedule for Washington. Other 5 cohort counties continue on NY state
+NVSR.
+
+**New code** in `popfc.data.nchs`:
+
+- `usaleep_qx_band_ratio(target, reference)` — per-band qx ratio
+  between two USALEEP-aggregate life tables.
+- `apply_qx_ratio_to_life_table(nvsr_table, qx_ratios, ...)` —
+  rebuild an NVSR-style single-year life table with adjusted qx,
+  reconstructed lx/Lx/Tx/ex. Output schema-conforming; vintage gains
+  a `_usaleep_adj` suffix.
+
+**Notebook 06 §6c**: builds Washington-adjusted schedule and adds
+geoid `36115` rows to both `survival_rates.parquet` and
+`life_tables.parquet`.
+
+**Notebook 08**: `survival_geoid="36115" if geoid==WASHINGTON else
+"36000"` — Washington uses the adjusted schedule, others use NY
+state as before.
+
+**Headline forecast impact** (baseline scenario):
+
+| Year | Pre-adjustment | Post-adjustment | Delta |
+|---|---|---|---|
+| 2024 | 59,839 | 59,839 | 0 (base year) |
+| 2030 | 57,722 | 57,910 | +188 |
+| 2040 | 52,979 | 53,361 | +382 |
+| 2050 | 47,567 | **47,990** | **+423** |
+
+Right in the +200-500 range predicted in Batch 7. e(0) under the
+adjusted schedule is **80.11** vs NVSR NY 2022 baseline **79.53**
+(+0.58 years).
+
+**6 new tests** for the qx-ratio helpers (happy path, error paths,
+ratio identity, qx clipping at 1.0). 2 existing test assertions
+updated to tolerate the new 36115 slices in life_tables.parquet.
+**167 total tests pass.**
+
+---
+
+## 2026-05-26 — `feat/data-archival` (merged to main)
 
 Post-review follow-up #1: reproducibility infrastructure. Closes the
 loop on a concern surfaced during the V2025 refresh (Census reorganizes

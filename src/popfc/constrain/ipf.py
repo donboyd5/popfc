@@ -145,11 +145,17 @@ def apply_ipf_constraint(
     converged = False
     last_max_change = float("inf")
 
+    def _safe_scale(targets: np.ndarray, sums: np.ndarray) -> np.ndarray:
+        """Compute targets / sums but leave the row/column unchanged when sum == 0."""
+        out = np.ones_like(sums, dtype=float)
+        nonzero = sums > 0
+        np.divide(targets, sums, out=out, where=nonzero)
+        return out
+
     if row_targets_aligned is None:
         # Single-pass column-only IPF (equivalent to per-column proration).
         col_sums = mat.sum(axis=0)
-        # Avoid 0/0: where col_sum == 0 leave the column unchanged.
-        scale = np.where(col_sums > 0, col_targets_aligned.to_numpy() / col_sums, 1.0)
+        scale = _safe_scale(col_targets_aligned.to_numpy(), col_sums)
         prev = mat.copy()
         mat = mat * scale[np.newaxis, :]
         last_max_change = float(np.max(np.abs(mat - prev)))
@@ -165,11 +171,11 @@ def apply_ipf_constraint(
             prev = mat.copy()
             # Column step.
             col_sums = mat.sum(axis=0)
-            col_scale = np.where(col_sums > 0, col_targets_np / col_sums, 1.0)
+            col_scale = _safe_scale(col_targets_np, col_sums)
             mat = mat * col_scale[np.newaxis, :]
             # Row step.
             row_sums = mat.sum(axis=1)
-            row_scale = np.where(row_sums > 0, row_targets_np / row_sums, 1.0)
+            row_scale = _safe_scale(row_targets_np, row_sums)
             mat = mat * row_scale[:, np.newaxis]
             last_max_change = float(np.max(np.abs(mat - prev)))
             if last_max_change < tol:

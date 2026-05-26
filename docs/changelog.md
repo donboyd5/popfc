@@ -11,7 +11,77 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/migration-decomposition` (in progress)
+## 2026-05-26 — `feat/town-historicals` (in progress)
+
+Batch 5 of the review: statewide NY town historical data + a
+rural-growth descriptive notebook.
+
+**Data assembled (idempotent, built by Notebook 11 §0):**
+
+- **`data_interim/town_agesex_history.parquet`** — every NY MCD's
+  age × sex pyramid across 15 ACS 5-year vintages (2009-2024 except
+  2020). 1,024 MCDs × 15 vintages × 2 sexes × 18 5-yr age bands ≈
+  552k rows. Built by pulling B01001 statewide at every available
+  vintage and aggregating via the existing Hamilton-Perry
+  age-band helper.
+- **`data_interim/town_total_pop_history.parquet`** — annual MCD
+  totals from PEP `sub-est2025` (2020-2025) plus 5-year-midpoint
+  totals from the ACS frame above (~2007 to ~2022). Multi-source
+  long-format.
+
+**New API pulls:** added 13 ACS B01001 vintages (statewide NY MCDs)
+to the cache. Vintage 2020 is intentionally absent — Census did not
+release ACS 5-yr 2016-2020 due to COVID survey disruption.
+
+**Operational fix:** `CENSUS_API_KEY` was being set per-session via
+`export`. Moved the export to `~/.profile` (instead of `~/.bashrc`,
+because Ubuntu's stock `~/.bashrc` has the "if not interactive,
+return" guard at the top, so the export there would never run in
+non-interactive shells). Login shells now pick up the key
+unconditionally.
+
+**Notebook 11 — `notebooks/11_rural_town_analysis.ipynb`**
+(descriptive, not in the forecast DAG):
+
+§1-2: Per-MCD population change first-vs-latest ACS observation. 377
+rural NY MCDs (pop ≤ 2,000 at latest obs); 140 grew, 224 shrank, 13
+~flat. Hampton (Washington Co) shows up as a real grower (+67%
+2009→2024), which explains its outlier appearance in the Notebook 09
+town forecast (where Hamilton-Perry on small populations amplified
+the historical growth into the +188% forecast).
+
+§3: Component decomposition via **age-aware proportional allocation**
+(per user feedback that births should be allocated by share of women
+of childbearing age, not total pop):
+
+| Component | Allocator |
+|---|---|
+| Births | Town's share of county women aged 15-49 |
+| Deaths | Town's share of county pop aged 65+ |
+| Domestic / international migration | Town's share of total population |
+
+Verified that per-county allocated sums exactly match published
+county components. Documented as a first-pass approximation in
+methodology.md.
+
+§4: Counterfactual lens — if each top-grower's recent net migration
+rate were sustained another decade, the implied 2035 population.
+Pure arithmetic; not a forecast.
+
+§5: Pattern summary. Most rural NY MCDs lose population; the few
+growers tend to have **domestic migration as the dominant
+component**. Consistent with the Batch 3 historical-reference
+scenario framework — meaning real rural growth has occurred and is
+reflected in the engine's "best window" scenarios.
+
+**147 tests pass.** No new tests added in this batch — the new code
+is all notebook-level + idempotent build helpers; the building blocks
+(ACS loader, age-band aggregator, components data) all have existing
+test coverage.
+
+---
+
+## 2026-05-26 — `feat/migration-decomposition` (merged to main `4faf665`)
 
 Batch 4 of the review: migration depth. Surfacing the
 domestic-vs-international split + IRS gross flow detail in the

@@ -42,17 +42,35 @@ Survival is NCHS NY State 2022 (rebanded to top-code 85). ASFR is the
 county-specific scaled-to-2024 schedule. Net migration is the
 2020-2024 four-year average per county-sex-age.
 
-## Scenarios
+## Scenarios — historical-reference framework
 
-- **baseline**: ASFR × 1.00, net migration × 1.00
-- **low**:      ASFR × 0.85, net migration × 0.70 (heavier out / less in,
-                lower fertility)
-- **high**:     ASFR × 1.15, net migration × 1.30 (lighter out / more in,
-                higher fertility)
+Scenarios are anchored to **each county's own observed migration
+experience over the last decade**, not to arbitrary multipliers. For
+every cohort county we look at all rolling 5-year windows of net
+migration (PEP `net_mig` / mid-year pop) starting at 2010, pick the
+best and worst windows, and translate them into engine inputs as
+follows:
 
-Scenario knobs are deliberately simple in v1 — single scalar
-multipliers. More expressive scenarios (time-varying paths, age-band
-overrides) are out of scope.
+- **baseline**: ASFR × 1.00; migration uses the engine's residual-
+  method rates as-is (which already average the most recent 4 year-
+  pairs, ≈ "current" experience).
+- **low**: ASFR × 0.85 (about 15% below current TFR); migration
+  shifted to match the county's **worst observed 5-year window**.
+- **high**: ASFR × 1.15; migration shifted to match the county's
+  **best observed 5-year window**.
+
+The migration shift is implemented additively. We compute the
+county's current 5-year-window average rate and the best/worst
+window averages, then apply a uniform delta `(target − current)` to
+every per-(age, sex) migration rate. This preserves the age × sex
+*shape* of migration (kids in, working-age out for Washington) and
+moves only the *level*. It also yields scenario bands grounded in
+real historical experience — no arbitrary multipliers — which
+matters when a county's net migration is small and signed.
+
+See `docs/methodology.md` for the historical-reference framework and
+`popfc.models.migration.historical_reference_periods()` for the
+implementation.
 
 ## Output
 
@@ -72,6 +90,7 @@ from popfc.models.cohort_component import (
     PROJECTION_COLUMNS,
     project_one_county,
 )
+from popfc.models.migration import historical_reference_periods
 from popfc.models.mortality import survival_rates_from_life_table
 from popfc.paths import DATA_INTERIM, FULL_FIPS
 
@@ -91,11 +110,10 @@ COHORT = {
     "36021": "Columbia",
 }
 
-SCENARIOS = {
-    "baseline": {"asfr_multiplier": 1.00, "net_mig_multiplier": 1.00},
-    "low":      {"asfr_multiplier": 0.85, "net_mig_multiplier": 0.70},
-    "high":     {"asfr_multiplier": 1.15, "net_mig_multiplier": 1.30},
-}
+# Scenario fertility multipliers (around current observed TFR).
+ASFR_LOW = 0.85
+ASFR_BASE = 1.00
+ASFR_HIGH = 1.15
 """),
     # ---------------------------------------------------------------
     md("""
@@ -123,10 +141,63 @@ print(f"base pop rows: {len(base_all):,}; counties: {base_all['geoid'].nunique()
 """),
     # ---------------------------------------------------------------
     md("""
-## 2. Run the engine for each cohort county × each scenario
+## 2. Compute per-county historical reference periods
+
+For each cohort county, find the best, worst, and current 5-year-window
+average net migration rates. These become the engine's `net_mig_delta`
+(additive shift relative to the residual-method rates) under the high,
+low, and baseline scenarios.
 """),
     code("""
+components = pd.read_parquet(DATA_INTERIM / "county_components.parquet")
+pop_reconciled = pd.read_parquet(DATA_INTERIM / "population_reconciled.parquet")
+
+ref_periods = historical_reference_periods(
+    components, pop_reconciled,
+    window_years=5, start_year=2010,
+    geoids=list(COHORT.keys()),
+)
+
+print("Per-county 5-year migration windows (PEP net_mig / mid-year pop):")
+ref_wide = (
+    ref_periods.pivot_table(
+        index=["geoid", "geography"],
+        columns="window_kind",
+        values=["year_start", "year_end", "avg_rate"],
+        aggfunc="first",
+    )
+)
+# Show as: geography | current rate | best rate (years) | worst rate (years)
+display_rows = []
+for (g, name), grp in ref_periods.groupby(["geoid", "geography"]):
+    row = {"geoid": g, "geography": name}
+    for kind in ("current", "best", "worst"):
+        r = grp[grp["window_kind"] == kind].iloc[0] if (grp["window_kind"] == kind).any() else None
+        if r is not None:
+            row[f"{kind}_rate_pct"] = 100 * float(r["avg_rate"])
+            row[f"{kind}_window"] = f"{int(r['year_start'])}-{int(r['year_end'])}"
+    display_rows.append(row)
+ref_display = pd.DataFrame(display_rows)
+print(ref_display.to_string(index=False, float_format=lambda x: f'{x:+.3f}%'))
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 3. Run the engine for each cohort county × each scenario
+
+Migration `net_mig_delta` is computed per-county per-scenario as
+`(target_rate − current_rate)`, where `current_rate` is the most-
+recent 5-year window's average net migration rate and `target_rate`
+is the high/low scenario's reference window's average. This shifts
+every per-(age, sex) migration rate uniformly by the same amount,
+preserving shape and changing level.
+"""),
+    code("""
+def _rate_for(ref_df: pd.DataFrame, geoid: str, kind: str) -> float:
+    row = ref_df[(ref_df["geoid"] == geoid) & (ref_df["window_kind"] == kind)]
+    return float(row["avg_rate"].iloc[0]) if not row.empty else 0.0
+
 results: list[pd.DataFrame] = []
+scenario_inputs: list[dict] = []   # for inspection/reporting after the run
 for geoid, name in COHORT.items():
     base = base_all[base_all["geoid"] == geoid].copy()
     if base.empty:
@@ -139,7 +210,21 @@ for geoid, name in COHORT.items():
     if asfr_c.empty:
         print(f"WARN: no ASFR for {geoid} ({name})")
         continue
-    for scenario_name, knobs in SCENARIOS.items():
+
+    cur_rate  = _rate_for(ref_periods, geoid, "current")
+    best_rate = _rate_for(ref_periods, geoid, "best")
+    worst_rate = _rate_for(ref_periods, geoid, "worst")
+    # Deltas are scenario_target − current. Baseline = 0 by construction.
+    scenarios = {
+        "baseline": {"asfr_multiplier": ASFR_BASE, "net_mig_delta": 0.0,
+                     "_ref": "current"},
+        "low":      {"asfr_multiplier": ASFR_LOW,  "net_mig_delta": worst_rate - cur_rate,
+                     "_ref": "worst"},
+        "high":     {"asfr_multiplier": ASFR_HIGH, "net_mig_delta": best_rate - cur_rate,
+                     "_ref": "best"},
+    }
+    for scenario_name, knobs in scenarios.items():
+        ref_kind = knobs.pop("_ref")
         out = project_one_county(
             base, BASE_YEAR, END_YEAR,
             survival=survival, asfr=asfr_c, net_mig=net_mig,
@@ -150,15 +235,25 @@ for geoid, name in COHORT.items():
             **knobs,
         )
         results.append(out)
+        scenario_inputs.append({
+            "geoid": geoid, "geography": name, "scenario": scenario_name,
+            "ref_kind": ref_kind,
+            "asfr_multiplier": knobs["asfr_multiplier"],
+            "net_mig_delta": knobs["net_mig_delta"],
+        })
 
 forecasts = pd.concat(results, ignore_index=True)
 print(f"forecasts rows: {len(forecasts):,}")
 print(f"  scenarios: {sorted(forecasts['scenario'].unique())}")
 print(f"  year range: {forecasts['year'].min()}-{forecasts['year'].max()}")
+print()
+print("Per-county scenario inputs:")
+print(pd.DataFrame(scenario_inputs)
+      .to_string(index=False, float_format=lambda x: f'{x:+.5f}'))
 """),
     # ---------------------------------------------------------------
     md("""
-## 3. Total population by year × scenario — Washington
+## 4. Total population by year × scenario — Washington
 """),
     code("""
 totals = (
@@ -221,7 +316,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-### 3b. Cohort time-series small multiples
+### 4b. Cohort time-series small multiples
 
 Same three-scenario fan for each cohort county. Y-axes are
 independent so each county's trajectory fills its panel — read this for
@@ -260,7 +355,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 4. Cohort summary — 2050 outcomes
+## 5. Cohort summary — 2050 outcomes
 """),
     code("""
 y2050 = totals[totals["year"] == END_YEAR].copy()
@@ -284,7 +379,7 @@ print(piv_pct.round(1).to_string())
 """),
     # ---------------------------------------------------------------
     md("""
-### 4b. 2050 % change ranking
+### 5b. 2050 % change ranking
 
 The cohort sorted by baseline % change from the base year, with low/high
 scenarios shown as the bracket. Lets you see which counties have the
@@ -318,7 +413,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 5. Age structure — Washington base-year vs 2050 baseline pyramid
+## 6. Age structure — Washington base-year vs 2050 baseline pyramid
 """),
     code("""
 def age_pyramid(forecasts: pd.DataFrame, geoid: str, year: int, scenario: str = "baseline"):
@@ -347,7 +442,7 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
-## 6. Components of the Washington decline — natural change vs migration
+## 7. Components of the Washington decline — natural change vs migration
 
 Decompose the projected population change into Births, Deaths, and Net
 Migration per forecast year. We compute Births directly from the
@@ -515,7 +610,7 @@ printed in the previous cell should be very close to zero.
 """),
     # ---------------------------------------------------------------
     md("""
-## 7. QA assertions
+## 8. QA assertions
 """),
     code("""
 def qa(forecasts: pd.DataFrame) -> None:
@@ -542,7 +637,7 @@ qa(forecasts)
 """),
     # ---------------------------------------------------------------
     md("""
-## 8. Save
+## 9. Save
 """),
     code("""
 out_path = DATA_INTERIM / "county_forecasts.parquet"

@@ -8,8 +8,10 @@ import pytest
 
 from popfc.models.migration import (
     NET_MIGRATION_RATES_COLUMNS,
+    REFERENCE_PERIOD_COLUMNS,
     _residual_one_pair,
     build_net_migration_rates,
+    historical_reference_periods,
 )
 from popfc.models.mortality import SURVIVAL_RATES_COLUMNS
 
@@ -139,3 +141,88 @@ class TestBuildNetMigrationRates:
         )
         # Only 2022-2023 is a consecutive pair, so n_year_pairs == 1 everywhere.
         assert (out["n_year_pairs"] == 1).all()
+
+
+# ---------------------------------------------------------------------------
+# Historical reference periods
+# ---------------------------------------------------------------------------
+
+class TestHistoricalReferencePeriods:
+    def _synthetic(self, years=range(2010, 2025),
+                   net_mig_series=None, pop_series=None):
+        if net_mig_series is None:
+            # Simple alternating positive/negative pattern that makes
+            # best/worst windows easy to compute by hand.
+            net_mig_series = [+100 if (y % 2 == 0) else -100 for y in years]
+        if pop_series is None:
+            pop_series = [10000] * len(list(years))
+        comp_rows = []
+        pop_rows = []
+        for y, nm, pp in zip(years, net_mig_series, pop_series):
+            comp_rows.append({
+                "state_fips": "36", "county_fips": "001",
+                "geoid": "36001", "geography": "Test",
+                "year": y, "measure": "net_mig", "value": float(nm),
+                "source": "test", "vintage": "vt", "notes": "",
+            })
+            pop_rows.append({
+                "state_fips": "36", "county_fips": "001",
+                "geoid": "36001", "geography": "Test",
+                "year": y, "kind": "estimate", "population": int(pp),
+                "source": "test", "vintage": "vt", "notes": "",
+            })
+        return pd.DataFrame(comp_rows), pd.DataFrame(pop_rows)
+
+    def test_schema(self):
+        comp, pop = self._synthetic()
+        out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
+        assert list(out.columns) == REFERENCE_PERIOD_COLUMNS
+
+    def test_three_rows_per_county(self):
+        comp, pop = self._synthetic()
+        out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
+        # Expect exactly three rows (current, best, worst) for one county.
+        assert len(out) == 3
+        assert set(out["window_kind"].unique()) == {"current", "best", "worst"}
+
+    def test_best_vs_worst_ordering(self):
+        # Three regimes — moderate-out early, positive middle, heavy-out late.
+        # Forces best, worst, and current to be three distinct windows.
+        years = list(range(2010, 2025))
+        nm = ([-100] * 5) + ([+500] * 5) + ([-500] * 5)
+        comp, pop = self._synthetic(years=years, net_mig_series=nm)
+        out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
+        best = out[out["window_kind"] == "best"].iloc[0]
+        worst = out[out["window_kind"] == "worst"].iloc[0]
+        current = out[out["window_kind"] == "current"].iloc[0]
+        # Best is the middle window 2015-2019 (everything is +500).
+        assert int(best["year_start"]) == 2015 and int(best["year_end"]) == 2019
+        # Worst is the latest window 2020-2024 (heavy out).
+        assert int(worst["year_start"]) == 2020 and int(worst["year_end"]) == 2024
+        # Current is the latest window — in this case current == worst.
+        assert int(current["year_end"]) == 2024
+        # Invariant: best is at least as good as current, worst at least as bad.
+        assert best["avg_rate"] > current["avg_rate"]
+        assert worst["avg_rate"] <= current["avg_rate"]
+
+    def test_insufficient_data_skips_county(self):
+        # Only 3 years of data: too few for a 5-year window.
+        years = list(range(2010, 2013))
+        nm = [+100, -100, +50]
+        comp, pop = self._synthetic(years=years, net_mig_series=nm,
+                                    pop_series=[10000] * 3)
+        out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
+        assert out.empty
+        assert list(out.columns) == REFERENCE_PERIOD_COLUMNS
+
+    def test_average_rate_arithmetic(self):
+        # Net mig = 200 every year against pop = 10,000 means rate = 0.02 every
+        # year (mid-pop = 10,000 too, since pop is constant). Average over any
+        # 5-year window = 0.02 exactly.
+        years = list(range(2010, 2020))
+        nm = [200] * 10
+        comp, pop = self._synthetic(years=years, net_mig_series=nm,
+                                    pop_series=[10000] * 10)
+        out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
+        for _, row in out.iterrows():
+            assert abs(float(row["avg_rate"]) - 0.02) < 1e-9

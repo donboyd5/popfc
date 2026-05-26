@@ -218,3 +218,146 @@ def build_net_migration_rates(
     out["n_year_pairs"] = out["n_year_pairs"].astype("Int64")
     # Reorder.
     return out[NET_MIGRATION_RATES_COLUMNS].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Historical reference periods (for scenario construction)
+# ---------------------------------------------------------------------------
+
+# Output columns for the per-county reference-period summary returned by
+# `historical_reference_periods()`.
+REFERENCE_PERIOD_COLUMNS: list[str] = [
+    "geoid",            # 5-char county FIPS
+    "geography",        # human-readable county name
+    "window_kind",      # "current" | "best" | "worst"
+    "year_start",       # first year of the window (inclusive)
+    "year_end",         # last year of the window (inclusive)
+    "n_years",          # number of years in the window (window_years if data is complete)
+    "avg_rate",         # average annual net migration as a fraction of mid-year pop
+    "notes",            # free-form
+]
+
+
+def historical_reference_periods(
+    components: pd.DataFrame,
+    population: pd.DataFrame,
+    *,
+    window_years: int = 5,
+    start_year: int = 2010,
+    end_year: int | None = None,
+    geoids: list[str] | None = None,
+) -> pd.DataFrame:
+    """Find per-county best/worst/current rolling-window net migration averages.
+
+    For each county, computes annual net migration as a fraction of mid-year
+    population (using PEP's published `net_mig` measure and the reconciled
+    annual totals), then identifies three reference windows of `window_years`:
+
+    - **current**: the most recent complete window in the data
+    - **best**:    the window with the highest (most positive / least negative)
+                   average rate over the eligible range
+    - **worst**:   the window with the lowest average rate
+
+    These are used to construct scenario knobs that anchor projections to
+    historical experience rather than arbitrary multipliers.
+
+    Parameters
+    ----------
+    components
+        Long-format components frame (`COMPONENTS_LONG_COLUMNS`). Must
+        contain rows with `measure == "net_mig"` (counts).
+    population
+        Reconciled annual population frame (`POP_LONG_COLUMNS`). Used as
+        the denominator for rates and to compute mid-year averages.
+    window_years
+        Window size in years (default 5). Windows are inclusive on both
+        ends; a 5-year window covers years y, y+1, ..., y+4.
+    start_year
+        Earliest year a window may start (default 2010).
+    end_year
+        Latest year that may appear in a window. Default: max year in
+        `components` with `net_mig` data.
+    geoids
+        Restrict to specific counties. Default: every county that has at
+        least `window_years` years of net_mig data.
+
+    Returns
+    -------
+    DataFrame conforming to `REFERENCE_PERIOD_COLUMNS`, three rows per
+    geoid (current, best, worst). When the data is too sparse for a
+    county (fewer than `window_years` complete years), that county is
+    omitted from the output.
+    """
+    nm = components[components["measure"] == "net_mig"][
+        ["geoid", "geography", "year", "value"]
+    ].rename(columns={"value": "net_mig"}).copy()
+    nm["net_mig"] = nm["net_mig"].astype("Float64")
+    nm = nm.dropna(subset=["net_mig"])
+
+    pop = population[["geoid", "year", "population"]].copy()
+    pop["population"] = pop["population"].astype("Float64")
+    pop = pop.dropna(subset=["population"]).sort_values(["geoid", "year"])
+    pop["pop_prev"] = pop.groupby("geoid")["population"].shift(1)
+    pop["mid_pop"] = (pop["population"] + pop["pop_prev"]) / 2.0
+
+    df = nm.merge(pop[["geoid", "year", "mid_pop"]], on=["geoid", "year"], how="inner")
+    df["mig_rate"] = df["net_mig"].astype("Float64") / df["mid_pop"]
+    df = df.dropna(subset=["mig_rate"])
+
+    if end_year is None:
+        end_year = int(df["year"].max())
+
+    df = df[(df["year"] >= start_year) & (df["year"] <= end_year)].copy()
+
+    if geoids is not None:
+        df = df[df["geoid"].isin(geoids)].copy()
+
+    out_rows: list[dict] = []
+    for geoid, gsub in df.groupby("geoid"):
+        gsub = gsub.sort_values("year").reset_index(drop=True)
+        years = gsub["year"].to_numpy()
+        rates = gsub["mig_rate"].astype(float).to_numpy()
+        geog = gsub["geography"].iloc[0]
+        n = len(years)
+        if n < window_years:
+            continue
+        # Build rolling-window averages keyed by the window's start year.
+        windows = []
+        for i in range(n - window_years + 1):
+            start = int(years[i])
+            stop = int(years[i + window_years - 1])
+            # Require the window to be contiguous (no missing years between
+            # start and stop) — otherwise the average isn't comparable.
+            if stop - start != window_years - 1:
+                continue
+            avg = float(rates[i : i + window_years].mean())
+            windows.append((start, stop, avg))
+        if not windows:
+            continue
+
+        # Current = the window that ends latest.
+        current = max(windows, key=lambda w: w[1])
+        # Best = highest avg (most positive); worst = lowest.
+        best = max(windows, key=lambda w: w[2])
+        worst = min(windows, key=lambda w: w[2])
+
+        for kind, (s, e, avg) in [("current", current), ("best", best), ("worst", worst)]:
+            out_rows.append({
+                "geoid": geoid,
+                "geography": geog,
+                "window_kind": kind,
+                "year_start": s,
+                "year_end": e,
+                "n_years": window_years,
+                "avg_rate": avg,
+                "notes": "",
+            })
+
+    if not out_rows:
+        return pd.DataFrame(columns=REFERENCE_PERIOD_COLUMNS)
+    out = pd.DataFrame(out_rows)
+    out["avg_rate"] = out["avg_rate"].astype("Float64")
+    out["year_start"] = out["year_start"].astype("Int64")
+    out["year_end"] = out["year_end"].astype("Int64")
+    out["n_years"] = out["n_years"].astype("Int64")
+    return out[REFERENCE_PERIOD_COLUMNS].reset_index(drop=True)

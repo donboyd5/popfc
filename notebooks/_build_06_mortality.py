@@ -428,6 +428,99 @@ the oldest ages where the differential bites hardest).
 """),
     # ---------------------------------------------------------------
     md("""
+## 6c. USALEEP qx-ratio-adjusted NVSR for Washington — production schedule
+
+We **use** the USALEEP differential rather than just documenting it.
+Approach: compute the per-USALEEP-band qx ratio (Washington-aggregate ÷
+NY-aggregate, both from USALEEP 2010-2015) and apply it as a
+multiplicative adjustment to NVSR NY 2022 single-year qx values.
+
+This preserves the **period match** (NVSR 2022, contemporaneous with
+the forecast base) while capturing the **Washington-specific mortality
+differential** measured under USALEEP. The adjusted table is added to
+`data_interim/survival_rates.parquet` alongside the existing NY state
+schedule; Notebook 08 picks `survival_geoid="36115"` for Washington
+and `"36000"` for the other 5 cohort counties.
+
+Implementation: `usaleep_qx_band_ratio()` + `apply_qx_ratio_to_life_table()`
+in `popfc.data.nchs`.
+"""),
+    code("""
+from popfc.data.nchs import (
+    usaleep_qx_band_ratio, apply_qx_ratio_to_life_table,
+    load_nchs_state_life_tables_all_sexes,
+)
+
+# Reuse wash_agg from §6b. Build NY USALEEP aggregate the same way for the ratio.
+ny_agg_rows = []
+for age, band in tracts.groupby("age"):
+    ny_agg_rows.append({
+        "age": int(age),
+        "age_band": band["age_band"].iloc[0],
+        "qx": float(band["qx"].astype(float).mean()),
+    })
+ny_agg_df = pd.DataFrame(ny_agg_rows).sort_values("age").reset_index(drop=True)
+
+ratios = usaleep_qx_band_ratio(wash_agg[["age", "age_band", "qx"]], ny_agg_df)
+print("Per-band qx ratios (Washington / NY, USALEEP-aggregate):")
+print(ratios.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+
+# Apply to NVSR NY 2022 by sex.
+nvsr_all_sexes = load_nchs_state_life_tables_all_sexes()
+wash_adj_life_tables = []
+for sex_filter in ("All", "M", "F"):
+    nvsr_sub = nvsr_all_sexes[nvsr_all_sexes["sex"] == sex_filter]
+    if nvsr_sub.empty:
+        continue
+    adj = apply_qx_ratio_to_life_table(
+        nvsr_sub, ratios,
+        target_geoid="36115", target_geography="Washington County, NY",
+    )
+    wash_adj_life_tables.append(adj)
+wash_adj_life_table = pd.concat(wash_adj_life_tables, ignore_index=True)
+
+# Headline life expectancies.
+print()
+print("e(0) comparison:")
+e0_orig = float(nvsr_all_sexes[(nvsr_all_sexes["sex"] == "All")
+                               & (nvsr_all_sexes["age"] == 0)]["ex"].iloc[0])
+e0_adj = float(wash_adj_life_table[(wash_adj_life_table["sex"] == "All")
+                                   & (wash_adj_life_table["age"] == 0)]["ex"].iloc[0])
+print(f"  NVSR NY 2022 (current default):              {e0_orig:.2f}")
+print(f"  Washington USALEEP qx-ratio-adjusted NVSR:   {e0_adj:.2f}")
+print(f"  Washington advantage (qx-ratio adjustment):  {e0_adj - e0_orig:+.2f} years")
+"""),
+    code("""
+# Convert the Washington-adjusted life table to survival rates and add to the
+# main survival frame. The engine will pick survival_geoid='36115' for
+# Washington and '36000' (NY state) for other cohort counties.
+wash_survival = survival_rates_from_life_table(wash_adj_life_table)
+wash_survival.head()
+"""),
+    code("""
+# Stack NY state survival (computed in §2) + Washington-adjusted survival.
+# Both have the same SURVIVAL_RATES_COLUMNS schema.
+survival_combined = pd.concat([survival, wash_survival], ignore_index=True)
+print(f"Combined survival rows: {len(survival_combined):,}")
+print(f"  by geoid x sex: {dict(survival_combined.groupby(['geoid','sex']).size())}")
+"""),
+    code("""
+# Also extend life_tables.parquet with the Washington-adjusted life table.
+# Notebook 08 reconstructs its survival schedule from life_tables.parquet
+# (it needs to reband to top-code 85 for the engine), so the Washington
+# rows need to be discoverable there too. Notebook 04 wrote the original
+# file; here we append the Washington-adjusted rows.
+life_tables_out_path = DATA_INTERIM / "life_tables.parquet"
+existing_lt = pd.read_parquet(life_tables_out_path)
+# Drop any prior Washington rows (so re-running this notebook is idempotent).
+existing_lt = existing_lt[existing_lt["geoid"] != "36115"]
+life_tables_combined = pd.concat([existing_lt, wash_adj_life_table], ignore_index=True)
+life_tables_combined.to_parquet(life_tables_out_path, index=False)
+print(f"Updated {life_tables_out_path}: {len(life_tables_combined):,} rows "
+      f"({(life_tables_combined['geoid']=='36115').sum()} Washington-adjusted rows added)")
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 7. Recent mortality trend — Census PEP crude death rate
 
 USALEEP is dated 2010–2015. For a more current view of relative mortality
@@ -482,18 +575,27 @@ artifact — a proper SMR analysis (deferred) would adjust this out.
     md("""
 ## 8. Save survival rates
 
-We save the NCHS NVSR-derived rates for both US (2023) and NY state
-(2022), by sex, in a single tidy parquet. Downstream code (the
-cohort-component engine) will pick `geoid='36000'` for any NY county
-projection by default.
+We save three sets of survival rates in one tidy parquet:
+
+- **US 2023** (NVSR) — for cross-state reference / sanity.
+- **NY state 2022** (NVSR, geoid `36000`) — default for any NY county
+  the engine projects.
+- **Washington-adjusted 2022** (NVSR 2022 with USALEEP qx ratio applied;
+  geoid `36115`) — picked up by the cohort-component engine when
+  projecting Washington specifically.
+
+Other cohort counties (Saratoga, Warren, Rensselaer, Essex, Columbia)
+continue to use the NY state schedule (`36000`); we don't have enough
+small-area mortality signal to justify per-county adjustments beyond
+Washington.
 """),
     code("""
 out_path = DATA_INTERIM / "survival_rates.parquet"
-survival.to_parquet(out_path, index=False)
-print(f"wrote {out_path}  ({len(survival):,} rows)")
+survival_combined.to_parquet(out_path, index=False)
+print(f"wrote {out_path}  ({len(survival_combined):,} rows)")
 print()
 print("Coverage:")
-print(survival.groupby(["geoid", "geography", "year_start", "vintage"]).size()
+print(survival_combined.groupby(["geoid", "geography", "year_start", "vintage"]).size()
       .rename("rows").reset_index().to_string(index=False))
 """),
     # ---------------------------------------------------------------

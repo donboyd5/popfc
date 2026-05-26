@@ -102,14 +102,20 @@ class TestSurvivalRatesFromLifeTable:
         assert list(nvsr_survival.columns) == SURVIVAL_RATES_COLUMNS
 
     def test_row_count(self, nvsr_survival):
-        # 6 slices (US/NY × All/M/F) × (1 birth + 99 closed + 1 boundary) = 606
-        assert len(nvsr_survival) == 606
+        # Per slice: 1 birth + 99 closed + 1 boundary = 101.
+        # Default geos: US + NY-state (36000); Washington qx-ratio-adjusted
+        # (36115) is added when the post-Batch-7 qx-ratio branch lands.
+        # Tolerate both shapes — 2 or 3 geos × 3 sexes × 101 rates.
+        n_slices = nvsr_survival.groupby(["geoid", "year_start", "sex"]).ngroups
+        assert len(nvsr_survival) == n_slices * 101
+        assert n_slices in (6, 9)  # 2 or 3 geos × 3 sexes
 
     def test_band_type_counts(self, nvsr_survival):
         counts = nvsr_survival["band_type"].value_counts().to_dict()
-        assert counts["birth"] == 6
-        assert counts["closed"] == 594  # 99 × 6
-        assert counts["boundary"] == 6
+        n_slices = nvsr_survival.groupby(["geoid", "year_start", "sex"]).ngroups
+        assert counts["birth"] == n_slices
+        assert counts["closed"] == n_slices * 99
+        assert counts["boundary"] == n_slices
 
     def test_all_Sx_in_unit_interval(self, nvsr_survival):
         Sx = nvsr_survival["Sx"].astype(float)

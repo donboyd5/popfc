@@ -345,6 +345,246 @@ print(f"wrote {out_path}  ({len(m):,} rows)")
 """),
     # ---------------------------------------------------------------
     md("""
+## 7. Decomposition — domestic vs international migration (Batch 4b)
+
+The residual method gives us *net* migration rates per cell. PEP V2025
+publishes county-level **domestic and international migration counts**
+separately. By combining those PEP-level shares with an age-shape
+adjustment derived from ACS B07001 (Geographical Mobility by Age), we
+can split each cell's `m_total` into a `m_dom` and `m_int` component
+while preserving baseline forecast invariance (`m_dom + m_int =
+m_total` per cell).
+
+### Why this matters
+
+Same-shape, same-level migration projections collapse two demographic
+processes that respond very differently to policy and economic
+conditions. The 2020-2025 PEP record for Washington County is the
+clearest example:
+
+- **domestic** swings from -630 to +161 (volatile, driven by housing,
+  jobs, retirement migration)
+- **international** is steady at 0 to +162 (immigration policy,
+  family reunification, refugee placement — slow-moving aggregates)
+
+When net is small (e.g., +6 for Essex County) but components are large
+(-26 dom + +32 int), the *signed* domestic factor `p_dom_county`
+falls outside [0, 1] — those counties are flagged so downstream
+scenario users understand that component multipliers can produce
+disproportionate net swings there.
+
+### Inputs
+
+- `net_migration_rates.parquet` (built above) — m_total per cell
+- `county_components.parquet` — PEP `domestic_mig` + `international_mig`
+- ACS B07001 5-year 2019-2023 — age × mobility-origin (via
+  `popfc.data.acs.load_acs5_group`)
+"""),
+    code("""
+from popfc.data.acs import load_acs5_group, GEO_COUNTY
+from popfc.models.migration import (
+    b07001_age_component_shape,
+    expand_age_shape_to_single_year,
+    decompose_net_migration,
+    NET_MIGRATION_COMPONENTS_COLUMNS,
+)
+
+# Load PEP components (statewide, all years 2010-2025).
+components = pd.read_parquet(DATA_INTERIM / "county_components.parquet")
+print(f"components rows: {len(components):,}; "
+      f"measures: {sorted(components['measure'].unique())}")
+
+# Pull / read-from-cache ACS B07001 for all NY counties (5-year 2019-2023).
+b07001 = load_acs5_group(
+    "B07001", year=2023, geography=GEO_COUNTY, state_fips="36",
+)
+print(f"B07001 rows: {len(b07001):,}, counties: {b07001['geoid'].nunique()}")
+"""),
+    md("""
+### 7a. Age × mobility-origin shape (NY state-aggregate)
+
+`f_dom(age)` is the fraction of (domestic + international) inflows at
+each age band that came from domestic origins (different county in
+same state, plus different state). Intra-county moves are excluded —
+they don't affect county-level net migration. Same-house non-movers
+are excluded — they're not migrants.
+"""),
+    code("""
+shape_band = b07001_age_component_shape(b07001, state_filter="36")
+shape_single = expand_age_shape_to_single_year(shape_band, top_code_age=TOP_CODE_AGE)
+
+print("f_dom by age band (NY state-aggregate, B07001 2019-2023):")
+print(shape_band[["age_band", "domestic", "international", "f_dom"]]
+      .to_string(index=False, float_format=lambda x: f'{x:,.0f}' if x > 10 else f'{x:.4f}'))
+
+# Plot the age-shape: f_dom vs age band
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+band_x = shape_band["age_lower"].astype(float).to_numpy()
+band_f = shape_band["f_dom"].astype(float).to_numpy()
+band_labels = shape_band["age_band"].tolist()
+
+axes[0].plot(band_x, band_f, marker="o", color="C0")
+overall = float(band_f.mean())
+axes[0].axhline(overall, color="grey", linewidth=0.8, linestyle="--",
+                label=f"unweighted mean ({overall:.3f})")
+axes[0].set_xlabel("age (band lower bound)")
+axes[0].set_ylabel("f_dom = domestic / (domestic + international)")
+axes[0].set_title("NY state age-shape: domestic share of dom+int inflows (B07001)")
+axes[0].grid(True, alpha=0.3)
+axes[0].legend()
+axes[0].set_ylim(0.75, 0.95)
+
+# Absolute volumes by component
+axes[1].plot(band_x, shape_band["domestic"].astype(float), marker="o",
+             color="C0", label="domestic inflows")
+axes[1].plot(band_x, shape_band["international"].astype(float), marker="o",
+             color="C3", label="international inflows")
+axes[1].set_xlabel("age (band lower bound)")
+axes[1].set_ylabel("# inflows over 5 years (NY state)")
+axes[1].set_title("Absolute inflow volume by component")
+axes[1].set_yscale("log")
+axes[1].grid(True, alpha=0.3, which="both")
+axes[1].legend()
+
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+### 7b. County-level domestic share (`p_dom_county`)
+
+`p_dom_county = sum(domestic_mig) / (sum(domestic_mig) + sum(international_mig))`
+over the past 5 PEP years. It's a *signed* factor — counties where one
+component is negative and the other positive will have `p_dom_county`
+outside `[0, 1]`. That's not a probability — it's the cell-level
+multiplier the engine applies when splitting `m_total` into components.
+Counties with `|p_dom_county| > 5` are flagged unstable because their
+net is small relative to their offsetting components.
+"""),
+    code("""
+decomp = decompose_net_migration(
+    net_mig=m,
+    pep_components=components,
+    age_shape_single_year=shape_single,
+    share_years=(2019, 2024),
+)
+print(f"decomp rows: {len(decomp):,}, cols: {list(decomp.columns)}")
+
+# Per-county p_dom — one row per county (all cells share the value).
+per_county = decomp.drop_duplicates("geoid")[
+    ["geoid", "geography", "p_dom_county", "notes"]
+].copy()
+per_county["p_dom_county"] = per_county["p_dom_county"].astype(float)
+per_county = per_county.sort_values("p_dom_county")
+
+print()
+print("Cohort counties — p_dom_county:")
+cohort_df = per_county[per_county["geoid"].isin(COHORT)].copy()
+cohort_df["name"] = cohort_df["geoid"].map(COHORT)
+print(cohort_df[["name", "geoid", "p_dom_county", "notes"]].to_string(index=False,
+      float_format=lambda x: f'{x:+.3f}'))
+
+print()
+flagged = per_county[per_county["notes"].str.startswith("p_dom_unstable")][
+    ["geoid", "geography", "p_dom_county"]
+]
+print(f"Counties flagged unstable (|p_dom_county| > 5): {len(flagged)}")
+print(flagged.to_string(index=False, float_format=lambda x: f'{x:+.2f}'))
+"""),
+    code("""
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+# All 62 counties as a strip
+axes[0].axhline(0, color="grey", linewidth=0.6)
+axes[0].axhline(1, color="grey", linewidth=0.6)
+ys = per_county["p_dom_county"].astype(float).to_numpy()
+xs = range(len(ys))
+colors = ["C3" if per_county.iloc[i]["notes"].startswith("p_dom_unstable") else "C0"
+          for i in range(len(ys))]
+axes[0].scatter(xs, ys, c=colors, s=24, alpha=0.8)
+axes[0].set_xlabel("county rank (sorted by p_dom_county)")
+axes[0].set_ylabel("p_dom_county")
+axes[0].set_title("Per-county domestic share (red = unstable, |p_dom| > 5)")
+axes[0].grid(True, alpha=0.3)
+
+# Histogram clipped
+axes[1].hist(ys.clip(-5, 5), bins=40, color="C0", alpha=0.7)
+axes[1].axvline(0, color="grey", linewidth=0.6)
+axes[1].axvline(1, color="grey", linewidth=0.6, linestyle="--",
+                label="p_dom = 1 (purely domestic-driven net)")
+axes[1].set_xlabel("p_dom_county (clipped to [-5, 5] for readability)")
+axes[1].set_ylabel("# counties")
+axes[1].set_title("Distribution of p_dom_county across 62 NY counties")
+axes[1].grid(True, alpha=0.3)
+axes[1].legend()
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+### 7c. Decomposed migration rates by age — Washington
+
+Each line below shows m_dom (blue) and m_int (red) by age, with their
+sum equal to the original m_total (grey dashed). For Washington
+(p_dom = +1.60), m_dom and m_int have **opposite signs** at every
+age — net domestic out-migration mostly offsets net international
+in-migration. A scenario that reduces international flows (e.g., a
+tighter immigration policy) would amplify Washington's net population
+loss.
+"""),
+    code("""
+def plot_decomp(decomp: pd.DataFrame, geoid: str, name: str):
+    sub = decomp[(decomp["geoid"] == geoid) & (decomp["band_type"] == "closed")].copy()
+    sub = sub.sort_values(["sex", "age"])
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
+    for ax, sex in zip(axes, ("M", "F")):
+        s = sub[sub["sex"] == sex].sort_values("age")
+        ages = s["age"].to_numpy()
+        m_dom = s["m_dom_rate"].astype(float).to_numpy()
+        m_int = s["m_int_rate"].astype(float).to_numpy()
+        m_tot = s["m_total_rate"].astype(float).to_numpy()
+        ax.plot(ages, m_tot, color="grey", linewidth=1.0, linestyle="--",
+                label="m_total (residual)")
+        ax.plot(ages, m_dom, color="C0", linewidth=1.4, label="m_dom")
+        ax.plot(ages, m_int, color="C3", linewidth=1.4, label="m_int")
+        ax.axhline(0, color="black", linewidth=0.4)
+        ax.set_title(f"{name} ({geoid}) — {sex}")
+        ax.set_xlabel("age")
+        ax.grid(True, alpha=0.3)
+    axes[0].set_ylabel("rate per source-age person per year")
+    axes[0].legend(loc="best")
+    p_dom_val = float(sub["p_dom_county"].iloc[0])
+    fig.suptitle(f"Decomposed migration rates by age — {name} "
+                 f"(p_dom_county = {p_dom_val:+.3f})", y=1.02)
+    fig.tight_layout()
+    plt.show()
+
+plot_decomp(decomp, WASHINGTON, "Washington")
+"""),
+    md("""
+### 7d. QA + save
+"""),
+    code("""
+def qa_decomp(d: pd.DataFrame) -> None:
+    assert list(d.columns) == NET_MIGRATION_COMPONENTS_COLUMNS, (
+        f"unexpected columns: {list(d.columns)}"
+    )
+    # m_dom + m_int == m_total cell-by-cell
+    recon = d["m_dom_rate"].astype(float) + d["m_int_rate"].astype(float)
+    err = (recon - d["m_total_rate"].astype(float)).abs().max()
+    assert err < 1e-9, f"cell sum drift: max |m_dom + m_int - m_total| = {err}"
+    # Every county that had m_total has m_dom_rate
+    assert d["geoid"].nunique() == m["geoid"].nunique(), (
+        "decomposition lost counties"
+    )
+    print(f"OK — decomposition QA: {d['geoid'].nunique()} counties, "
+          f"{len(d):,} rows, max cell-sum drift {err:.2e}")
+
+qa_decomp(decomp)
+
+out_path = DATA_INTERIM / "net_migration_components.parquet"
+decomp.to_parquet(out_path, index=False)
+print(f"wrote {out_path}  ({len(decomp):,} rows)")
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## Next steps
 
 - **`src/popfc/models/cohort_component.py`** — the projection engine

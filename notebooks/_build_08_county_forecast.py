@@ -414,6 +414,153 @@ plt.show()
 """),
     # ---------------------------------------------------------------
     md("""
+### 5c. Component scenarios — domestic vs international knobs (Batch 4b)
+
+The historical-reference framework above moves migration in *aggregate*
+between observed extremes. Batch 4b adds a per-component decomposition
+so we can run policy-style scenarios that vary domestic and
+international migration **independently**:
+
+- **comp_low_int** — international migration cut to 50% of historical;
+  domestic unchanged. Models a tighter-immigration scenario.
+- **comp_low_dom** — domestic migration cut to 50% of historical;
+  international unchanged. Models a "domestic out-migration slows"
+  scenario, e.g., if remote-work-driven outflows reverse.
+- **comp_baseline** — both multipliers = 1.0. Should match the
+  regular baseline exactly (sanity check for the engine).
+
+The decomposition is loaded from `net_migration_components.parquet`
+(produced by notebook 07 §7). Counties flagged ``p_dom_unstable``
+respond disproportionately to multiplicative knobs — read those
+results with a grain of salt.
+"""),
+    code("""
+net_mig_comp = pd.read_parquet(DATA_INTERIM / "net_migration_components.parquet")
+print(f"net_mig_components rows: {len(net_mig_comp):,}, "
+      f"counties: {net_mig_comp['geoid'].nunique()}")
+
+comp_results: list[pd.DataFrame] = []
+comp_scenarios = {
+    "comp_baseline": dict(net_mig_dom_multiplier=1.0, net_mig_int_multiplier=1.0),
+    "comp_low_int":  dict(net_mig_dom_multiplier=1.0, net_mig_int_multiplier=0.5),
+    "comp_low_dom":  dict(net_mig_dom_multiplier=0.5, net_mig_int_multiplier=1.0),
+}
+for geoid, name in COHORT.items():
+    base = base_all[base_all["geoid"] == geoid].copy()
+    if base.empty: continue
+    asfr_c = asfr_all[(asfr_all["geoid"] == geoid) & (asfr_all["year"] == BASE_YEAR)
+                     ][["age", "asfr_per_1000"]].copy()
+    if asfr_c.empty: continue
+
+    for scenario_name, knobs in comp_scenarios.items():
+        out = project_one_county(
+            base, BASE_YEAR, END_YEAR,
+            survival=survival, asfr=asfr_c, net_mig=net_mig,
+            net_mig_components=net_mig_comp,
+            geoid=geoid, geography=name,
+            survival_geoid=("36115" if geoid == WASHINGTON else "36000"),
+            net_mig_geoid=geoid,
+            top_code_age=TOP_CODE_AGE,
+            asfr_multiplier=ASFR_BASE,
+            scenario=scenario_name,
+            **knobs,
+        )
+        comp_results.append(out)
+
+comp_forecasts = pd.concat(comp_results, ignore_index=True)
+print(f"comp_forecasts rows: {len(comp_forecasts):,}")
+
+# Sanity: comp_baseline should match regular baseline at every (year, sex, age).
+cb = comp_forecasts[comp_forecasts["scenario"] == "comp_baseline"]
+b = forecasts[forecasts["scenario"] == "baseline"]
+m_check = b.merge(cb, on=["geoid", "year", "sex", "age"], suffixes=("_b", "_cb"))
+m_check["abs_diff"] = (m_check["population_b"].astype(float) -
+                       m_check["population_cb"].astype(float)).abs()
+print(f"Max |baseline − comp_baseline| across all cells: "
+      f"{m_check['abs_diff'].max():.6e}")
+"""),
+    code("""
+# 2050 totals per cohort county × component scenario.
+comp_totals = (
+    comp_forecasts.groupby(["geoid", "geography", "year", "scenario"])["population"]
+    .sum()
+    .reset_index()
+)
+y2050_comp = comp_totals[comp_totals["year"] == END_YEAR]
+y_base_comp = comp_totals[comp_totals["year"] == BASE_YEAR]
+
+joined_comp = y2050_comp.merge(
+    y_base_comp.rename(columns={"population": "pop_base"})[
+        ["geoid", "scenario", "pop_base"]
+    ],
+    on=["geoid", "scenario"], how="left",
+)
+joined_comp["pct_change"] = 100.0 * (joined_comp["population"] / joined_comp["pop_base"] - 1.0)
+
+piv_comp = joined_comp.pivot_table(
+    index="geography", columns="scenario", values="population"
+).round(0).astype(int)
+print(f"{END_YEAR} population by component scenario:")
+print(piv_comp.to_string())
+print()
+piv_comp_pct = joined_comp.pivot_table(
+    index="geography", columns="scenario", values="pct_change"
+).round(1)
+print(f"% change {BASE_YEAR}→{END_YEAR}:")
+print(piv_comp_pct.to_string())
+"""),
+    code("""
+# Bar chart: 2050 delta from comp_baseline for each cohort county,
+# splitting by which scenario is being varied.
+delta_rows = []
+for geog, grp in joined_comp.groupby("geography"):
+    base_pop = grp[grp["scenario"] == "comp_baseline"]["population"].iloc[0]
+    for s in ("comp_low_int", "comp_low_dom"):
+        row = grp[grp["scenario"] == s]
+        if row.empty: continue
+        delta_rows.append({
+            "geography": geog, "scenario": s,
+            "delta_persons": float(row["population"].iloc[0]) - float(base_pop),
+        })
+delta_df = pd.DataFrame(delta_rows)
+
+fig, ax = plt.subplots(figsize=(10, 4.5))
+geogs = sorted(delta_df["geography"].unique())
+x = np.arange(len(geogs))
+width = 0.38
+for i, s in enumerate(("comp_low_int", "comp_low_dom")):
+    vals = [
+        float(delta_df[(delta_df["geography"] == g) & (delta_df["scenario"] == s)]["delta_persons"].iloc[0])
+        if ((delta_df["geography"] == g) & (delta_df["scenario"] == s)).any() else 0.0
+        for g in geogs
+    ]
+    ax.bar(x + (i - 0.5) * width, vals, width=width,
+           color="C3" if "int" in s else "C0",
+           alpha=0.85, label=s, edgecolor="black", linewidth=0.4)
+ax.axhline(0, color="black", linewidth=0.6)
+ax.set_xticks(x)
+ax.set_xticklabels(geogs, rotation=15, ha="right")
+ax.set_ylabel(f"Δ {END_YEAR} population vs comp_baseline (persons)")
+ax.set_title(f"Component scenario impact on {END_YEAR} population — cohort counties")
+ax.grid(True, alpha=0.3, axis="y")
+ax.legend()
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading the chart.** Each county shows two bars: red is the 2050
+population change vs comp_baseline if international migration is cut
+in half; blue is the change if domestic migration is cut in half.
+
+For Washington (p_dom = +1.60, meaning the domestic component is net
+out and the international component is net in), the two bars should
+move in **opposite directions**: less international = smaller pop;
+less domestic out-migration = larger pop. For counties with positive
+domestic AND positive international (e.g., Saratoga, where both
+components add to growth), both bars should be negative.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 6. Age structure — Washington base-year vs 2050 baseline pyramid
 """),
     code("""
@@ -644,6 +791,14 @@ qa(forecasts)
 out_path = DATA_INTERIM / "county_forecasts.parquet"
 forecasts.to_parquet(out_path, index=False)
 print(f"wrote {out_path}  ({len(forecasts):,} rows)")
+
+# Component-scenario forecasts (Batch 4b) saved separately — these aren't
+# the production headline forecast; they exist so notebook 10 (or future
+# analyses) can compare the historical-reference framework with the
+# component-knob framework.
+out_path_c = DATA_INTERIM / "county_forecasts_components.parquet"
+comp_forecasts.to_parquet(out_path_c, index=False)
+print(f"wrote {out_path_c}  ({len(comp_forecasts):,} rows)")
 """),
     # ---------------------------------------------------------------
     md("""

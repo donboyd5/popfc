@@ -361,3 +361,379 @@ def historical_reference_periods(
     out["year_end"] = out["year_end"].astype("Int64")
     out["n_years"] = out["n_years"].astype("Int64")
     return out[REFERENCE_PERIOD_COLUMNS].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Domestic / international decomposition (Batch 4b)
+# ---------------------------------------------------------------------------
+#
+# The residual method gives us *net* migration rates m_total(g, s, a). For
+# analytical and scenario purposes we want to split each cell into a
+# domestic component m_dom and an international component m_int such that
+# m_dom + m_int = m_total. The decomposition combines three inputs:
+#
+#   1. **Per-county aggregate shares**: PEP V2025 publishes county-year
+#      `domestic_mig` and `international_mig` counts. Their ratio gives a
+#      *signed* county-level domestic factor `p_dom_county`. Counties
+#      where the two components have opposite signs (e.g., Washington
+#      with negative domestic and positive international net) yield
+#      p_dom outside [0, 1] — this is the correct sign-carrying factor,
+#      not a probability.
+#
+#   2. **Age × component shape**: ACS B07001 (Geographical Mobility in
+#      the Past Year by Age) gives the relative fraction of inflows at
+#      each age band that come from domestic vs international origins.
+#      For NY state-aggregate this fraction is fairly flat (0.81-0.91
+#      across age bands) but the tilt is non-trivial at college (18-19,
+#      tilts domestic) and child / very old ages (tilts international).
+#
+#   3. **Per-cell residual rates**: m_total(g, s, a) from the residual
+#      method. The decomposition preserves these cell-by-cell so the
+#      baseline forecast (all multipliers = 1, all deltas = 0) is
+#      identical to the pre-decomposition engine.
+
+B07001_AGE_BANDS: list[tuple[int, int | None, str]] = [
+    (1, 4, "1 to 4 years"),
+    (5, 17, "5 to 17 years"),
+    (18, 19, "18 and 19 years"),
+    (20, 24, "20 to 24 years"),
+    (25, 29, "25 to 29 years"),
+    (30, 34, "30 to 34 years"),
+    (35, 39, "35 to 39 years"),
+    (40, 44, "40 to 44 years"),
+    (45, 49, "45 to 49 years"),
+    (50, 54, "50 to 54 years"),
+    (55, 59, "55 to 59 years"),
+    (60, 64, "60 to 64 years"),
+    (65, 69, "65 to 69 years"),
+    (70, 74, "70 to 74 years"),
+    (75, None, "75 years and over"),
+]
+
+# Components within B07001 that count toward "domestic" net migration.
+# We exclude "Moved within same county" since intra-county moves don't
+# affect county-level net migration.
+_B07001_DOMESTIC_COMPONENTS = (
+    "Moved from different county within same state",
+    "Moved from different state",
+)
+_B07001_INTERNATIONAL_COMPONENTS = ("Moved from abroad",)
+
+
+# Output columns for `b07001_age_component_shape()`.
+AGE_COMPONENT_SHAPE_COLUMNS: list[str] = [
+    "age_lower",       # Int — lower bound of the band (inclusive)
+    "age_upper",       # Int — upper bound of the band (inclusive); pandas.NA for the open top band
+    "age_band",        # B07001 label
+    "domestic",        # Float — aggregated inflow count for domestic components
+    "international",   # Float — aggregated inflow count for international
+    "f_dom",           # domestic / (domestic + international) ∈ [0, 1]
+    "source",
+    "vintage",
+    "notes",
+]
+
+
+def b07001_age_component_shape(
+    b07001_long: pd.DataFrame,
+    *,
+    state_filter: str | None = "36",
+    label_col: str = "label",
+    value_col: str = "value",
+    state_fips_col: str = "state_fips",
+) -> pd.DataFrame:
+    """Aggregate B07001 (Mobility by Age) to a single age-band × component shape.
+
+    Parameters
+    ----------
+    b07001_long
+        Long-format frame returned by `popfc.data.acs.load_acs5_group("B07001", ...)`.
+        Must contain a `label` column with the human-readable ACS variable
+        label and a `value` column with the estimate. Other columns are used
+        for filtering only.
+    state_filter
+        Restrict to rows where `state_fips` matches. ``None`` aggregates
+        nationwide (or whatever's in the frame).
+    label_col, value_col, state_fips_col
+        Column names; override only if the caller has renamed them.
+
+    Returns
+    -------
+    DataFrame with one row per age band conforming to
+    `AGE_COMPONENT_SHAPE_COLUMNS`. ``f_dom`` is the fraction of
+    (domestic + international) inflows at each band age that are
+    domestic; intra-county moves and non-movers are excluded.
+    """
+    df = b07001_long
+    if state_filter is not None and state_fips_col in df.columns:
+        df = df[df[state_fips_col].astype(str).str.zfill(2) == state_filter]
+
+    parsed = df[label_col].astype(str).map(_parse_b07001_label)
+    df = df.assign(
+        _component=parsed.map(lambda t: t[0]),
+        _age_band=parsed.map(lambda t: t[1]),
+    )
+    df = df.dropna(subset=["_component", "_age_band"]).copy()
+
+    agg = (
+        df.groupby(["_component", "_age_band"], as_index=False)[value_col].sum()
+        .rename(columns={"_component": "component", "_age_band": "age_band"})
+    )
+    piv = agg.pivot_table(
+        index="age_band", columns="component", values=value_col, aggfunc="sum",
+    ).fillna(0.0)
+
+    dom_cols = [c for c in _B07001_DOMESTIC_COMPONENTS if c in piv.columns]
+    int_cols = [c for c in _B07001_INTERNATIONAL_COMPONENTS if c in piv.columns]
+    if not dom_cols or not int_cols:
+        raise ValueError(
+            "b07001_age_component_shape: B07001 frame is missing required "
+            f"components. Found columns: {sorted(piv.columns)}"
+        )
+    piv["domestic"] = piv[dom_cols].sum(axis=1)
+    piv["international"] = piv[int_cols].sum(axis=1)
+    piv["dom_int_total"] = piv["domestic"] + piv["international"]
+    piv["f_dom"] = piv["domestic"] / piv["dom_int_total"].replace(0.0, pd.NA)
+
+    # Attach age_lower / age_upper for downstream interpolation.
+    band_bounds = {label: (lo, hi) for lo, hi, label in B07001_AGE_BANDS}
+    out_rows = []
+    for band, row in piv.iterrows():
+        if band not in band_bounds:
+            continue  # ignore any unexpected labels
+        lo, hi = band_bounds[band]
+        out_rows.append({
+            "age_lower": lo,
+            "age_upper": hi if hi is not None else pd.NA,
+            "age_band": band,
+            "domestic": float(row["domestic"]),
+            "international": float(row["international"]),
+            "f_dom": float(row["f_dom"]) if pd.notna(row["f_dom"]) else pd.NA,
+            "source": "acs5_B07001",
+            "vintage": "",
+            "notes": "",
+        })
+    out = pd.DataFrame(out_rows).sort_values("age_lower").reset_index(drop=True)
+    out["age_lower"] = out["age_lower"].astype("Int64")
+    out["age_upper"] = out["age_upper"].astype("Int64")
+    out["f_dom"] = out["f_dom"].astype("Float64")
+    return out[AGE_COMPONENT_SHAPE_COLUMNS]
+
+
+def _parse_b07001_label(label: str) -> tuple[str | None, str | None]:
+    """Extract (component, age_band) from a B07001 ACS variable label.
+
+    Labels are double-bang-separated like
+    ``"Estimate!!Total:!!Moved from abroad:!!20 to 24 years"``. Returns
+    (None, None) for header rows that don't carry a specific age band
+    (e.g., "Estimate!!Total:" or "Estimate!!Total:!!Same house 1 year ago:").
+    """
+    parts = [p.rstrip(":").strip() for p in str(label).split("!!") if p.strip()]
+    if len(parts) < 4:
+        return (None, None)
+    return (parts[2], parts[3])
+
+
+def expand_age_shape_to_single_year(
+    shape_band: pd.DataFrame,
+    *,
+    top_code_age: int = 85,
+    f_dom_col: str = "f_dom",
+) -> pd.DataFrame:
+    """Expand a band-level age shape to single-year ages 0..top_code_age.
+
+    Single-year `f_dom` is uniform within each band. Ages outside the
+    band coverage are extrapolated from the nearest band: age 0 uses the
+    1-4 band; ages above the open top band (e.g., 76..85) use the 75+ value.
+
+    Returns
+    -------
+    DataFrame with columns ``age``, ``f_dom``.
+    """
+    rows: list[dict] = []
+    sb = shape_band.sort_values("age_lower").reset_index(drop=True)
+    youngest = sb.iloc[0]
+    oldest = sb.iloc[-1]
+    for age in range(0, top_code_age + 1):
+        if age < int(youngest["age_lower"]):
+            f = float(youngest[f_dom_col])
+        elif pd.isna(oldest["age_upper"]) and age >= int(oldest["age_lower"]):
+            f = float(oldest[f_dom_col])
+        else:
+            match = sb[
+                (sb["age_lower"] <= age)
+                & ((sb["age_upper"].isna()) | (sb["age_upper"] >= age))
+            ]
+            if match.empty:
+                # Falls between bands (shouldn't happen with B07001's contiguous
+                # bands, but be defensive)
+                f = float(youngest[f_dom_col])
+            else:
+                f = float(match[f_dom_col].iloc[0])
+        rows.append({"age": age, "f_dom": f})
+    out = pd.DataFrame(rows)
+    out["f_dom"] = out["f_dom"].astype("Float64")
+    return out
+
+
+# Output columns for `decompose_net_migration()`.
+NET_MIGRATION_COMPONENTS_COLUMNS: list[str] = [
+    "geoid",
+    "geography",
+    "year_basis",          # carried from net_mig
+    "sex",
+    "band_type",           # carried from net_mig
+    "age",
+    "source_age",
+    "m_total_rate",        # cell-level total (== existing m_rate)
+    "m_dom_rate",           # decomposed domestic component
+    "m_int_rate",           # decomposed international component
+    "p_dom_county",         # signed county-aggregate domestic share (PEP)
+    "p_dom_age_effective",  # cell-level effective domestic factor after age tilt
+    "n_year_pairs",
+    "share_year_basis",     # description of the PEP years used to compute p_dom_county
+    "source",               # provenance for the decomposition itself
+    "vintage",
+    "notes",
+]
+
+
+def _per_county_pep_dom_share(
+    pep_components: pd.DataFrame,
+    *,
+    years: tuple[int, int],
+) -> pd.DataFrame:
+    """Compute per-county signed domestic share from PEP components.
+
+    Returns a DataFrame with columns ``geoid``, ``p_dom_county``,
+    ``years_used``. `p_dom_county` is summed_dom / (summed_dom + summed_int)
+    over `years`; it can fall outside [0, 1] when the two components have
+    opposite signs.
+    """
+    y0, y1 = years
+    sub = pep_components[
+        pep_components["measure"].isin(["domestic_mig", "international_mig"])
+        & pep_components["year"].between(y0, y1)
+    ].copy()
+    if sub.empty:
+        raise ValueError(
+            f"_per_county_pep_dom_share: no domestic/international rows for "
+            f"years {y0}-{y1}"
+        )
+    sub["value"] = sub["value"].astype("Float64")
+    piv = (
+        sub.pivot_table(
+            index=["geoid", "geography"], columns="measure", values="value",
+            aggfunc="sum",
+        )
+        .reset_index()
+        .rename(columns={"domestic_mig": "dom_sum", "international_mig": "int_sum"})
+    )
+    piv["denom"] = piv["dom_sum"].astype("Float64") + piv["int_sum"].astype("Float64")
+    # Use signed share; let downstream callers handle the unusual range.
+    piv["p_dom_county"] = piv["dom_sum"].astype("Float64") / piv["denom"]
+    piv["share_year_basis"] = f"PEP {y0}-{y1} sum-of-components"
+    return piv[["geoid", "geography", "p_dom_county", "share_year_basis"]]
+
+
+def decompose_net_migration(
+    net_mig: pd.DataFrame,
+    pep_components: pd.DataFrame,
+    *,
+    age_shape_single_year: pd.DataFrame | None = None,
+    share_years: tuple[int, int] = (2019, 2024),
+    age_tilt_factor: float = 1.0,
+    p_dom_clip: tuple[float, float] = (-100.0, 100.0),
+    instability_threshold: float = 5.0,
+) -> pd.DataFrame:
+    """Decompose net migration rates into domestic + international components.
+
+    Parameters
+    ----------
+    net_mig
+        NET_MIGRATION_RATES_COLUMNS frame produced by
+        `build_net_migration_rates`.
+    pep_components
+        Long-format components frame (`COMPONENTS_LONG_COLUMNS`) containing
+        rows with `measure in ("domestic_mig", "international_mig")`.
+    age_shape_single_year
+        Optional DataFrame with columns ``age``, ``f_dom`` produced by
+        `expand_age_shape_to_single_year(b07001_age_component_shape(...))`.
+        When provided, the decomposition includes an age-specific tilt
+        (Tier 3); when None, the decomposition uses the county-aggregate
+        share for every cell (Tier 1 — degenerate at the age level).
+    share_years
+        Inclusive year range used to average PEP domestic / international
+        for the county-aggregate share.
+    age_tilt_factor
+        Multiplier on the age-specific tilt (deviation of `f_dom(a)` from
+        the state-aggregate average). 1.0 = full tilt; 0.0 = degenerate
+        to Tier 1. Useful for sensitivity analysis.
+    p_dom_clip
+        (lower, upper) clip bounds applied to `p_dom_age_effective`. The
+        signed factor can legitimately fall well outside [0, 1] for
+        counties whose two components have opposite signs and a near-zero
+        net (Essex, Columbia in NY). Default is permissive (-100, 100) so
+        real signed factors pass through; tighten only for safety-bound
+        scenario work.
+    instability_threshold
+        Counties with ``|p_dom_county| > instability_threshold`` get a
+        ``"p_dom_unstable: ..."`` annotation in the ``notes`` column.
+        These counties have offsetting components whose individual scale
+        is large relative to their net, so multiplicative scenario knobs
+        on m_dom or m_int can produce dramatic net-rate swings. The
+        decomposition itself is exact — the flag is a downstream caution.
+
+    Returns
+    -------
+    NET_MIGRATION_COMPONENTS_COLUMNS frame, one row per (geoid, sex, age).
+    For each cell:
+        m_dom_rate + m_int_rate == m_total_rate
+    """
+    pep_share = _per_county_pep_dom_share(pep_components, years=share_years)
+
+    if age_shape_single_year is not None:
+        # Centered tilt: deviation of each age's f_dom from the
+        # population-weighted average (over the shape frame). We use
+        # the SIMPLE mean of f_dom across ages 0..ω as the centering point;
+        # this approximates the population-weighted average for our flat
+        # shape (NY state f_dom varies 0.81-0.91), and keeps the function
+        # self-contained (no dependency on a population frame).
+        f_dom_arr = age_shape_single_year["f_dom"].astype(float).to_numpy()
+        f_dom_mean = float(f_dom_arr.mean())
+        age_arr = age_shape_single_year["age"].astype(int).to_numpy()
+        tilt_lookup = dict(zip(age_arr, f_dom_arr - f_dom_mean))
+        age_tilt_basis = f"B07001 single-year shape, centered at mean={f_dom_mean:.4f}"
+    else:
+        tilt_lookup = {}
+        age_tilt_basis = "none (Tier 1 — county-aggregate share only)"
+
+    # Merge net_mig with pep_share.
+    df = net_mig.merge(
+        pep_share, on=["geoid", "geography"], how="inner",
+    ).copy()
+    if df.empty:
+        # No counties had both net_mig rows AND PEP components.
+        return pd.DataFrame(columns=NET_MIGRATION_COMPONENTS_COLUMNS)
+
+    # Effective p_dom per cell.
+    age_for_tilt = df["age"].astype(int).map(tilt_lookup).fillna(0.0).astype(float)
+    p_dom_eff = df["p_dom_county"].astype(float) + age_for_tilt * age_tilt_factor
+    lo, hi = p_dom_clip
+    p_dom_eff = p_dom_eff.clip(lo, hi)
+
+    m_total = df["m_rate"].astype(float)
+    df["m_total_rate"] = m_total.astype("Float64")
+    df["m_dom_rate"] = (m_total * p_dom_eff).astype("Float64")
+    df["m_int_rate"] = (m_total * (1.0 - p_dom_eff)).astype("Float64")
+    df["p_dom_age_effective"] = p_dom_eff.astype("Float64")
+    df["source"] = "decompose_net_migration"
+    df["vintage"] = f"net_mig+pep+{age_tilt_basis}"
+    unstable = df["p_dom_county"].abs() > instability_threshold
+    df["notes"] = ""
+    df.loc[unstable, "notes"] = (
+        "p_dom_unstable: |p_dom_county| > "
+        f"{instability_threshold:.1f}; component scenario knobs may produce large net swings"
+    )
+
+    return df[NET_MIGRATION_COMPONENTS_COLUMNS].reset_index(drop=True)

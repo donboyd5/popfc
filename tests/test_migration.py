@@ -7,10 +7,16 @@ import pandas as pd
 import pytest
 
 from popfc.models.migration import (
+    AGE_COMPONENT_SHAPE_COLUMNS,
+    B07001_AGE_BANDS,
+    NET_MIGRATION_COMPONENTS_COLUMNS,
     NET_MIGRATION_RATES_COLUMNS,
     REFERENCE_PERIOD_COLUMNS,
     _residual_one_pair,
+    b07001_age_component_shape,
     build_net_migration_rates,
+    decompose_net_migration,
+    expand_age_shape_to_single_year,
     historical_reference_periods,
 )
 from popfc.models.mortality import SURVIVAL_RATES_COLUMNS
@@ -226,3 +232,196 @@ class TestHistoricalReferencePeriods:
         out = historical_reference_periods(comp, pop, window_years=5, start_year=2010)
         for _, row in out.iterrows():
             assert abs(float(row["avg_rate"]) - 0.02) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# B07001 age × component shape (Batch 4b)
+# ---------------------------------------------------------------------------
+
+def _synth_b07001_long() -> pd.DataFrame:
+    """Build a tiny synthetic B07001-shape long frame for one state, two bands.
+
+    Two age bands ("1 to 4 years", "20 to 24 years") × four components.
+    Counts chosen so domestic / international ratios differ between bands.
+    """
+    rows = []
+    cells = [
+        # band, component, value
+        ("1 to 4 years", "Moved within same county",                   500),
+        ("1 to 4 years", "Moved from different county within same state",  100),
+        ("1 to 4 years", "Moved from different state",                  50),
+        ("1 to 4 years", "Moved from abroad",                          150),  # international-heavy
+        ("20 to 24 years", "Moved within same county",                 1000),
+        ("20 to 24 years", "Moved from different county within same state", 800),
+        ("20 to 24 years", "Moved from different state",                400),
+        ("20 to 24 years", "Moved from abroad",                         200),  # domestic-heavy
+    ]
+    for age_band, comp, val in cells:
+        rows.append({
+            "state_fips": "36",
+            "geoid": "36000",
+            "label": f"Estimate!!Total:!!{comp}:!!{age_band}",
+            "value": float(val),
+        })
+    # Add a header / non-cell row to make sure parser ignores it
+    rows.append({"state_fips": "36", "geoid": "36000",
+                 "label": "Estimate!!Total:", "value": 99999.0})
+    return pd.DataFrame(rows)
+
+
+class TestB07001AgeComponentShape:
+    def test_schema(self):
+        out = b07001_age_component_shape(_synth_b07001_long(), state_filter="36")
+        assert list(out.columns) == AGE_COMPONENT_SHAPE_COLUMNS
+
+    def test_domestic_excludes_intra_county(self):
+        out = b07001_age_component_shape(_synth_b07001_long(), state_filter="36")
+        # 1-to-4 band: domestic = 100 + 50 = 150 (excluding intra-county 500)
+        r = out[out["age_band"] == "1 to 4 years"].iloc[0]
+        assert float(r["domestic"]) == 150.0
+        assert float(r["international"]) == 150.0
+        assert abs(float(r["f_dom"]) - 0.5) < 1e-9
+
+    def test_f_dom_differs_across_bands(self):
+        out = b07001_age_component_shape(_synth_b07001_long(), state_filter="36")
+        # 20-24 band: domestic = 800 + 400 = 1200; international = 200; f_dom = 1200/1400
+        r = out[out["age_band"] == "20 to 24 years"].iloc[0]
+        assert abs(float(r["f_dom"]) - (1200.0 / 1400.0)) < 1e-9
+
+    def test_state_filter_drops_other_states(self):
+        df = _synth_b07001_long()
+        df_other = df.copy()
+        df_other["state_fips"] = "06"  # California
+        df_other["value"] = df_other["value"].astype(float) * 100  # very different
+        combined = pd.concat([df, df_other], ignore_index=True)
+        out = b07001_age_component_shape(combined, state_filter="36")
+        # Result should be the same as the NY-only run.
+        r = out[out["age_band"] == "1 to 4 years"].iloc[0]
+        assert float(r["domestic"]) == 150.0
+
+
+class TestExpandAgeShape:
+    def test_single_year_grid(self):
+        band = pd.DataFrame({
+            "age_lower": [1, 5, 75],
+            "age_upper": [4, 17, pd.NA],
+            "age_band": ["1 to 4 years", "5 to 17 years", "75 years and over"],
+            "f_dom": [0.50, 0.70, 0.80],
+        })
+        out = expand_age_shape_to_single_year(band, top_code_age=85)
+        # 0..85 inclusive = 86 rows
+        assert len(out) == 86
+        # Age 0 (below the youngest band) takes the 1-4 value.
+        assert float(out[out["age"] == 0]["f_dom"].iloc[0]) == 0.50
+        # Ages 1-4 take the 1-4 value.
+        for a in range(1, 5):
+            assert float(out[out["age"] == a]["f_dom"].iloc[0]) == 0.50
+        # Ages 5-17 take the 5-17 value.
+        for a in range(5, 18):
+            assert float(out[out["age"] == a]["f_dom"].iloc[0]) == 0.70
+        # Ages 75..85 take the open-top value.
+        for a in range(75, 86):
+            assert float(out[out["age"] == a]["f_dom"].iloc[0]) == 0.80
+
+
+# ---------------------------------------------------------------------------
+# decompose_net_migration (Tier 1 + Tier 3)
+# ---------------------------------------------------------------------------
+
+def _synth_net_mig(geoid: str = "36001", geography: str = "Test County",
+                   m_rate: float = 0.02) -> pd.DataFrame:
+    """Build a minimal net_mig frame: one county, both sexes, ages 1..5 closed + 5 boundary."""
+    rows = []
+    for sex in ("M", "F"):
+        for source_age in range(0, 4):  # destination 1..4
+            rows.append({
+                "geoid": geoid, "geography": geography, "year_basis": "test",
+                "sex": sex, "band_type": "closed",
+                "age": source_age + 1, "source_age": source_age,
+                "m_rate": m_rate, "n_year_pairs": 1, "notes": "",
+            })
+        rows.append({
+            "geoid": geoid, "geography": geography, "year_basis": "test",
+            "sex": sex, "band_type": "boundary",
+            "age": 5, "source_age": 4, "m_rate": m_rate, "n_year_pairs": 1, "notes": "",
+        })
+    return pd.DataFrame(rows)
+
+
+def _synth_components(geoid: str = "36001", geography: str = "Test County",
+                      dom_per_year: float = +80.0,
+                      int_per_year: float = +20.0,
+                      years=range(2019, 2025)) -> pd.DataFrame:
+    rows = []
+    for y in years:
+        rows.append({"geoid": geoid, "geography": geography,
+                     "year": y, "measure": "domestic_mig", "value": dom_per_year,
+                     "source": "test", "vintage": "test", "notes": ""})
+        rows.append({"geoid": geoid, "geography": geography,
+                     "year": y, "measure": "international_mig", "value": int_per_year,
+                     "source": "test", "vintage": "test", "notes": ""})
+    return pd.DataFrame(rows)
+
+
+class TestDecomposeNetMigration:
+    def test_schema(self):
+        out = decompose_net_migration(_synth_net_mig(), _synth_components(),
+                                      share_years=(2019, 2024))
+        assert list(out.columns) == NET_MIGRATION_COMPONENTS_COLUMNS
+
+    def test_cell_sum_identity(self):
+        # m_dom + m_int must equal m_total for every cell, regardless of inputs.
+        out = decompose_net_migration(_synth_net_mig(m_rate=0.05),
+                                      _synth_components(dom_per_year=+50, int_per_year=+10))
+        err = (out["m_dom_rate"].astype(float)
+               + out["m_int_rate"].astype(float)
+               - out["m_total_rate"].astype(float)).abs().max()
+        assert err < 1e-12
+
+    def test_tier1_share_matches_pep(self):
+        # No age shape → p_dom = dom_sum / (dom_sum + int_sum).
+        out = decompose_net_migration(_synth_net_mig(),
+                                      _synth_components(dom_per_year=+80, int_per_year=+20))
+        p = float(out["p_dom_county"].iloc[0])
+        assert abs(p - 0.8) < 1e-9
+        # m_dom should be 80% of m_total when age_shape is None.
+        ratio = float(out["m_dom_rate"].iloc[0]) / float(out["m_total_rate"].iloc[0])
+        assert abs(ratio - 0.8) < 1e-9
+
+    def test_opposite_sign_components_yield_signed_p_dom(self):
+        # Domestic net = -135, international net = +51 → p_dom = -135 / -84 = 1.607
+        out = decompose_net_migration(_synth_net_mig(m_rate=-0.001),
+                                      _synth_components(dom_per_year=-135, int_per_year=+51))
+        p = float(out["p_dom_county"].iloc[0])
+        assert abs(p - (-135.0 / -84.0)) < 1e-9
+        # |p_dom| > 1 — instability flag should NOT fire at default threshold 5.
+        assert (out["notes"] == "").all()
+
+    def test_instability_flag(self):
+        # Net = -7, components -98 and +91 → p_dom = -98/-7 = 14.0 → flagged.
+        out = decompose_net_migration(_synth_net_mig(),
+                                      _synth_components(dom_per_year=-98, int_per_year=+91))
+        assert (out["notes"].str.startswith("p_dom_unstable")).all()
+
+    def test_age_tilt_zero_factor_matches_tier1(self):
+        # With age_tilt_factor = 0, the age shape should have no effect.
+        shape_band = pd.DataFrame({
+            "age_lower": [1], "age_upper": [pd.NA], "age_band": ["1 to 4 years"],
+            "f_dom": [0.5],
+        })
+        shape_single = expand_age_shape_to_single_year(shape_band, top_code_age=5)
+        # Build matching net_mig with same age range as shape coverage.
+        nm = _synth_net_mig()
+        out_no_shape = decompose_net_migration(nm, _synth_components(),
+                                               age_shape_single_year=None)
+        out_zero_tilt = decompose_net_migration(nm, _synth_components(),
+                                                age_shape_single_year=shape_single,
+                                                age_tilt_factor=0.0)
+        # Both should produce identical m_dom_rate per cell.
+        merged = out_no_shape.merge(
+            out_zero_tilt, on=["geoid", "sex", "age", "source_age", "band_type"],
+            suffixes=("_a", "_b"),
+        )
+        diff = (merged["m_dom_rate_a"].astype(float)
+                - merged["m_dom_rate_b"].astype(float)).abs().max()
+        assert diff < 1e-12

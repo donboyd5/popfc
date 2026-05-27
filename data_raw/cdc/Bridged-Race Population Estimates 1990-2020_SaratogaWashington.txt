@@ -1,0 +1,299 @@
+"Notes"	"Age"	"Age Code"	"County"	"County Code"	Population
+	"< 1 year"	"0"	"Saratoga County, NY"	"36091"	74455
+	"< 1 year"	"0"	"Washington County, NY"	"36115"	20959
+"Total"	"< 1 year"	"0"			95414
+	"1 year"	"1"	"Saratoga County, NY"	"36091"	77077
+	"1 year"	"1"	"Washington County, NY"	"36115"	21087
+"Total"	"1 year"	"1"			98164
+	"2 years"	"2"	"Saratoga County, NY"	"36091"	79446
+	"2 years"	"2"	"Washington County, NY"	"36115"	21343
+"Total"	"2 years"	"2"			100789
+	"3 years"	"3"	"Saratoga County, NY"	"36091"	82238
+	"3 years"	"3"	"Washington County, NY"	"36115"	21924
+"Total"	"3 years"	"3"			104162
+	"4 years"	"4"	"Saratoga County, NY"	"36091"	83268
+	"4 years"	"4"	"Washington County, NY"	"36115"	22572
+"Total"	"4 years"	"4"			105840
+	"5 years"	"5"	"Saratoga County, NY"	"36091"	84064
+	"5 years"	"5"	"Washington County, NY"	"36115"	23213
+"Total"	"5 years"	"5"			107277
+	"6 years"	"6"	"Saratoga County, NY"	"36091"	85333
+	"6 years"	"6"	"Washington County, NY"	"36115"	23110
+"Total"	"6 years"	"6"			108443
+	"7 years"	"7"	"Saratoga County, NY"	"36091"	86399
+	"7 years"	"7"	"Washington County, NY"	"36115"	23838
+"Total"	"7 years"	"7"			110237
+	"8 years"	"8"	"Saratoga County, NY"	"36091"	84809
+	"8 years"	"8"	"Washington County, NY"	"36115"	24230
+"Total"	"8 years"	"8"			109039
+	"9 years"	"9"	"Saratoga County, NY"	"36091"	86584
+	"9 years"	"9"	"Washington County, NY"	"36115"	24310
+"Total"	"9 years"	"9"			110894
+	"10 years"	"10"	"Saratoga County, NY"	"36091"	86502
+	"10 years"	"10"	"Washington County, NY"	"36115"	24792
+"Total"	"10 years"	"10"			111294
+	"11 years"	"11"	"Saratoga County, NY"	"36091"	87088
+	"11 years"	"11"	"Washington County, NY"	"36115"	25425
+"Total"	"11 years"	"11"			112513
+	"12 years"	"12"	"Saratoga County, NY"	"36091"	87135
+	"12 years"	"12"	"Washington County, NY"	"36115"	25806
+"Total"	"12 years"	"12"			112941
+	"13 years"	"13"	"Saratoga County, NY"	"36091"	88236
+	"13 years"	"13"	"Washington County, NY"	"36115"	26298
+"Total"	"13 years"	"13"			114534
+	"14 years"	"14"	"Saratoga County, NY"	"36091"	87574
+	"14 years"	"14"	"Washington County, NY"	"36115"	25931
+"Total"	"14 years"	"14"			113505
+	"15 years"	"15"	"Saratoga County, NY"	"36091"	87540
+	"15 years"	"15"	"Washington County, NY"	"36115"	26452
+"Total"	"15 years"	"15"			113992
+	"16 years"	"16"	"Saratoga County, NY"	"36091"	88244
+	"16 years"	"16"	"Washington County, NY"	"36115"	26309
+"Total"	"16 years"	"16"			114553
+	"17 years"	"17"	"Saratoga County, NY"	"36091"	87054
+	"17 years"	"17"	"Washington County, NY"	"36115"	26514
+"Total"	"17 years"	"17"			113568
+	"18 years"	"18"	"Saratoga County, NY"	"36091"	80984
+	"18 years"	"18"	"Washington County, NY"	"36115"	24140
+"Total"	"18 years"	"18"			105124
+	"19 years"	"19"	"Saratoga County, NY"	"36091"	78884
+	"19 years"	"19"	"Washington County, NY"	"36115"	22516
+"Total"	"19 years"	"19"			101400
+	"20 years"	"20"	"Saratoga County, NY"	"36091"	78087
+	"20 years"	"20"	"Washington County, NY"	"36115"	24098
+"Total"	"20 years"	"20"			102185
+	"21 years"	"21"	"Saratoga County, NY"	"36091"	77399
+	"21 years"	"21"	"Washington County, NY"	"36115"	23569
+"Total"	"21 years"	"21"			100968
+	"22 years"	"22"	"Saratoga County, NY"	"36091"	74649
+	"22 years"	"22"	"Washington County, NY"	"36115"	22539
+"Total"	"22 years"	"22"			97188
+	"23 years"	"23"	"Saratoga County, NY"	"36091"	72601
+	"23 years"	"23"	"Washington County, NY"	"36115"	22952
+"Total"	"23 years"	"23"			95553
+	"24 years"	"24"	"Saratoga County, NY"	"36091"	74491
+	"24 years"	"24"	"Washington County, NY"	"36115"	23089
+"Total"	"24 years"	"24"			97580
+	"25 years"	"25"	"Saratoga County, NY"	"36091"	76388
+	"25 years"	"25"	"Washington County, NY"	"36115"	22992
+"Total"	"25 years"	"25"			99380
+	"26 years"	"26"	"Saratoga County, NY"	"36091"	78434
+	"26 years"	"26"	"Washington County, NY"	"36115"	23154
+"Total"	"26 years"	"26"			101588
+	"27 years"	"27"	"Saratoga County, NY"	"36091"	80863
+	"27 years"	"27"	"Washington County, NY"	"36115"	23996
+"Total"	"27 years"	"27"			104859
+	"28 years"	"28"	"Saratoga County, NY"	"36091"	82713
+	"28 years"	"28"	"Washington County, NY"	"36115"	24408
+"Total"	"28 years"	"28"			107121
+	"29 years"	"29"	"Saratoga County, NY"	"36091"	84553
+	"29 years"	"29"	"Washington County, NY"	"36115"	24914
+"Total"	"29 years"	"29"			109467
+	"30 years"	"30"	"Saratoga County, NY"	"36091"	87887
+	"30 years"	"30"	"Washington County, NY"	"36115"	25241
+"Total"	"30 years"	"30"			113128
+	"31 years"	"31"	"Saratoga County, NY"	"36091"	90405
+	"31 years"	"31"	"Washington County, NY"	"36115"	25495
+"Total"	"31 years"	"31"			115900
+	"32 years"	"32"	"Saratoga County, NY"	"36091"	91843
+	"32 years"	"32"	"Washington County, NY"	"36115"	26241
+"Total"	"32 years"	"32"			118084
+	"33 years"	"33"	"Saratoga County, NY"	"36091"	93515
+	"33 years"	"33"	"Washington County, NY"	"36115"	26626
+"Total"	"33 years"	"33"			120141
+	"34 years"	"34"	"Saratoga County, NY"	"36091"	95492
+	"34 years"	"34"	"Washington County, NY"	"36115"	26225
+"Total"	"34 years"	"34"			121717
+	"35 years"	"35"	"Saratoga County, NY"	"36091"	97180
+	"35 years"	"35"	"Washington County, NY"	"36115"	27117
+"Total"	"35 years"	"35"			124297
+	"36 years"	"36"	"Saratoga County, NY"	"36091"	98007
+	"36 years"	"36"	"Washington County, NY"	"36115"	27785
+"Total"	"36 years"	"36"			125792
+	"37 years"	"37"	"Saratoga County, NY"	"36091"	99845
+	"37 years"	"37"	"Washington County, NY"	"36115"	27743
+"Total"	"37 years"	"37"			127588
+	"38 years"	"38"	"Saratoga County, NY"	"36091"	98706
+	"38 years"	"38"	"Washington County, NY"	"36115"	26862
+"Total"	"38 years"	"38"			125568
+	"39 years"	"39"	"Saratoga County, NY"	"36091"	100380
+	"39 years"	"39"	"Washington County, NY"	"36115"	27299
+"Total"	"39 years"	"39"			127679
+	"40 years"	"40"	"Saratoga County, NY"	"36091"	100310
+	"40 years"	"40"	"Washington County, NY"	"36115"	27926
+"Total"	"40 years"	"40"			128236
+	"41 years"	"41"	"Saratoga County, NY"	"36091"	102737
+	"41 years"	"41"	"Washington County, NY"	"36115"	27347
+"Total"	"41 years"	"41"			130084
+	"42 years"	"42"	"Saratoga County, NY"	"36091"	102975
+	"42 years"	"42"	"Washington County, NY"	"36115"	27653
+"Total"	"42 years"	"42"			130628
+	"43 years"	"43"	"Saratoga County, NY"	"36091"	102396
+	"43 years"	"43"	"Washington County, NY"	"36115"	27703
+"Total"	"43 years"	"43"			130099
+	"44 years"	"44"	"Saratoga County, NY"	"36091"	101707
+	"44 years"	"44"	"Washington County, NY"	"36115"	28097
+"Total"	"44 years"	"44"			129804
+	"45 years"	"45"	"Saratoga County, NY"	"36091"	101133
+	"45 years"	"45"	"Washington County, NY"	"36115"	27847
+"Total"	"45 years"	"45"			128980
+	"46 years"	"46"	"Saratoga County, NY"	"36091"	100745
+	"46 years"	"46"	"Washington County, NY"	"36115"	28267
+"Total"	"46 years"	"46"			129012
+	"47 years"	"47"	"Saratoga County, NY"	"36091"	101519
+	"47 years"	"47"	"Washington County, NY"	"36115"	28052
+"Total"	"47 years"	"47"			129571
+	"48 years"	"48"	"Saratoga County, NY"	"36091"	98222
+	"48 years"	"48"	"Washington County, NY"	"36115"	27645
+"Total"	"48 years"	"48"			125867
+	"49 years"	"49"	"Saratoga County, NY"	"36091"	97536
+	"49 years"	"49"	"Washington County, NY"	"36115"	27602
+"Total"	"49 years"	"49"			125138
+	"50 years"	"50"	"Saratoga County, NY"	"36091"	95808
+	"50 years"	"50"	"Washington County, NY"	"36115"	27203
+"Total"	"50 years"	"50"			123011
+	"51 years"	"51"	"Saratoga County, NY"	"36091"	94042
+	"51 years"	"51"	"Washington County, NY"	"36115"	26626
+"Total"	"51 years"	"51"			120668
+	"52 years"	"52"	"Saratoga County, NY"	"36091"	92038
+	"52 years"	"52"	"Washington County, NY"	"36115"	26386
+"Total"	"52 years"	"52"			118424
+	"53 years"	"53"	"Saratoga County, NY"	"36091"	90512
+	"53 years"	"53"	"Washington County, NY"	"36115"	25748
+"Total"	"53 years"	"53"			116260
+	"54 years"	"54"	"Saratoga County, NY"	"36091"	88410
+	"54 years"	"54"	"Washington County, NY"	"36115"	25663
+"Total"	"54 years"	"54"			114073
+	"55 years"	"55"	"Saratoga County, NY"	"36091"	86067
+	"55 years"	"55"	"Washington County, NY"	"36115"	25013
+"Total"	"55 years"	"55"			111080
+	"56 years"	"56"	"Saratoga County, NY"	"36091"	83453
+	"56 years"	"56"	"Washington County, NY"	"36115"	24759
+"Total"	"56 years"	"56"			108212
+	"57 years"	"57"	"Saratoga County, NY"	"36091"	81762
+	"57 years"	"57"	"Washington County, NY"	"36115"	24207
+"Total"	"57 years"	"57"			105969
+	"58 years"	"58"	"Saratoga County, NY"	"36091"	78560
+	"58 years"	"58"	"Washington County, NY"	"36115"	23403
+"Total"	"58 years"	"58"			101963
+	"59 years"	"59"	"Saratoga County, NY"	"36091"	76202
+	"59 years"	"59"	"Washington County, NY"	"36115"	22359
+"Total"	"59 years"	"59"			98561
+	"60 years"	"60"	"Saratoga County, NY"	"36091"	73623
+	"60 years"	"60"	"Washington County, NY"	"36115"	22112
+"Total"	"60 years"	"60"			95735
+	"61 years"	"61"	"Saratoga County, NY"	"36091"	70633
+	"61 years"	"61"	"Washington County, NY"	"36115"	21618
+"Total"	"61 years"	"61"			92251
+	"62 years"	"62"	"Saratoga County, NY"	"36091"	67496
+	"62 years"	"62"	"Washington County, NY"	"36115"	21305
+"Total"	"62 years"	"62"			88801
+	"63 years"	"63"	"Saratoga County, NY"	"36091"	65559
+	"63 years"	"63"	"Washington County, NY"	"36115"	20453
+"Total"	"63 years"	"63"			86012
+	"64 years"	"64"	"Saratoga County, NY"	"36091"	62758
+	"64 years"	"64"	"Washington County, NY"	"36115"	20119
+"Total"	"64 years"	"64"			82877
+	"65 years"	"65"	"Saratoga County, NY"	"36091"	60561
+	"65 years"	"65"	"Washington County, NY"	"36115"	19546
+"Total"	"65 years"	"65"			80107
+	"66 years"	"66"	"Saratoga County, NY"	"36091"	58249
+	"66 years"	"66"	"Washington County, NY"	"36115"	18634
+"Total"	"66 years"	"66"			76883
+	"67 years"	"67"	"Saratoga County, NY"	"36091"	55966
+	"67 years"	"67"	"Washington County, NY"	"36115"	18102
+"Total"	"67 years"	"67"			74068
+	"68 years"	"68"	"Saratoga County, NY"	"36091"	53079
+	"68 years"	"68"	"Washington County, NY"	"36115"	17459
+"Total"	"68 years"	"68"			70538
+	"69 years"	"69"	"Saratoga County, NY"	"36091"	50781
+	"69 years"	"69"	"Washington County, NY"	"36115"	16846
+"Total"	"69 years"	"69"			67627
+	"70 years"	"70"	"Saratoga County, NY"	"36091"	48599
+	"70 years"	"70"	"Washington County, NY"	"36115"	16029
+"Total"	"70 years"	"70"			64628
+	"71 years"	"71"	"Saratoga County, NY"	"36091"	46476
+	"71 years"	"71"	"Washington County, NY"	"36115"	15163
+"Total"	"71 years"	"71"			61639
+	"72 years"	"72"	"Saratoga County, NY"	"36091"	44271
+	"72 years"	"72"	"Washington County, NY"	"36115"	14663
+"Total"	"72 years"	"72"			58934
+	"73 years"	"73"	"Saratoga County, NY"	"36091"	41278
+	"73 years"	"73"	"Washington County, NY"	"36115"	13804
+"Total"	"73 years"	"73"			55082
+	"74 years"	"74"	"Saratoga County, NY"	"36091"	38659
+	"74 years"	"74"	"Washington County, NY"	"36115"	13138
+"Total"	"74 years"	"74"			51797
+	"75 years"	"75"	"Saratoga County, NY"	"36091"	37021
+	"75 years"	"75"	"Washington County, NY"	"36115"	12242
+"Total"	"75 years"	"75"			49263
+	"76 years"	"76"	"Saratoga County, NY"	"36091"	34409
+	"76 years"	"76"	"Washington County, NY"	"36115"	11708
+"Total"	"76 years"	"76"			46117
+	"77 years"	"77"	"Saratoga County, NY"	"36091"	32334
+	"77 years"	"77"	"Washington County, NY"	"36115"	11230
+"Total"	"77 years"	"77"			43564
+	"78 years"	"78"	"Saratoga County, NY"	"36091"	30038
+	"78 years"	"78"	"Washington County, NY"	"36115"	10574
+"Total"	"78 years"	"78"			40612
+	"79 years"	"79"	"Saratoga County, NY"	"36091"	28578
+	"79 years"	"79"	"Washington County, NY"	"36115"	9781
+"Total"	"79 years"	"79"			38359
+	"80 years"	"80"	"Saratoga County, NY"	"36091"	26147
+	"80 years"	"80"	"Washington County, NY"	"36115"	9115
+"Total"	"80 years"	"80"			35262
+	"81 years"	"81"	"Saratoga County, NY"	"36091"	24653
+	"81 years"	"81"	"Washington County, NY"	"36115"	8526
+"Total"	"81 years"	"81"			33179
+	"82 years"	"82"	"Saratoga County, NY"	"36091"	22812
+	"82 years"	"82"	"Washington County, NY"	"36115"	7822
+"Total"	"82 years"	"82"			30634
+	"83 years"	"83"	"Saratoga County, NY"	"36091"	20653
+	"83 years"	"83"	"Washington County, NY"	"36115"	6874
+"Total"	"83 years"	"83"			27527
+	"84 years"	"84"	"Saratoga County, NY"	"36091"	18706
+	"84 years"	"84"	"Washington County, NY"	"36115"	6575
+"Total"	"84 years"	"84"			25281
+	"85+ years"	"85+"	"Saratoga County, NY"	"36091"	104426
+	"85+ years"	"85+"	"Washington County, NY"	"36115"	36514
+"Total"	"85+ years"	"85+"			140940
+"Total"					8422823
+"---"
+"Dataset: Bridged-Race Population Estimates 1990-2020"
+"Query Parameters:"
+"States: Saratoga County, NY (36091); Washington County, NY (36115)"
+"Group By: Age; County"
+"Show Totals: True"
+"Show Zero Values: False"
+"Data Table: County Level"
+"---"
+"Help: See http://wonder.cdc.gov/wonder/help/bridged-race.html for more information."
+"---"
+"Query Date: Apr 13, 2025 1:31:03 PM"
+"---"
+"Suggested Citation: United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention"
+"(CDC), National Center for Health Statistics (NCHS), Bridged-Race Population Estimates, United States July 1st resident"
+"population by state, county, age, sex, bridged-race, and Hispanic origin. Compiled from 1990-1999 bridged-race intercensal"
+"population estimates (released by NCHS on 7/26/2004); revised bridged-race 2000-2009 intercensal population estimates (released"
+"by NCHS on 10/26/2012); and bridged-race Vintage 2020 (2010-2020) postcensal population estimates (released by NCHS on"
+"9/22/2021). Available on CDC WONDER Online Database. Accessed at http://wonder.cdc.gov/bridged-race-v2020.html on Apr 13, 2025"
+"1:31:03 PM"
+"---"
+Footnotes:
+"1. Estimates for 1990-1999 are bridged-race intercensal population estimates of the July 1 resident population. Estimates for"
+"2000-2009 are revised bridged-race intercensal estimates of the July 1 resident population. Estimates for 2010-2020 are"
+"bridged-race Vintage 2020 postcensal estimates of the July 1 resident population. These estimates were prepared by the Census"
+"Bureau in collaboration with NCHS."
+"---"
+Caveats:
+"1. County geography changes over time. New counties are created and old counties are deleted or their boundaries are modified."
+"The county codes and names for years 1990-1999 are based on Census 2000 geography; those for year 2000 and later are based on"
+"Census 2010 geography."
+"2. The U.S. Census Bureau annually releases unbridged population estimates for five-year age groups and race at the county level"
+"(http://www.census.gov/popest/research/eval-estimates/eval-est2010.html). The Census Bureau does not release bridged-race or"
+"unbridged estimates by single year of age at the county level due to concerns about the reliability of these estimates. However,"
+"these estimates are provided to the National Center for Health Statistics to meet programmatic needs such as the creation of age"
+"groupings that differ from the standard groupings used by the Census Bureau. Users of the single-year-of-age county-level"
+"bridged race population estimates should carefully consider the limited reliability of these estimates."
+"3. The query results include the sum of the population for more than one year. To see the population for a single year, either"
+"sort by year, or select only one year."

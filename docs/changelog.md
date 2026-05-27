@@ -11,6 +11,54 @@ the substantive changes. Entries are newest first.
 
 ---
 
+## 2026-05-27 — `feat/town-forecast-audit` (in progress)
+
+Read-only diagnostic notebook (`notebooks/12_town_forecast_audit.ipynb`)
+that surfaces what specifically is unreliable about the
+Hamilton-Perry town forecasts and what would help. The user flagged
+after Batch 6 that "town forecasts can't be trusted yet" — this
+audit makes that concrete.
+
+**What's working** (verified by the audit):
+
+- IPF column constraint: town sums match county forecast to 0.0%
+  across every (year, scenario) — floating-point precision.
+- Multi-vintage CCR averaging (Batch 6) significantly tamed the
+  worst v1 wildness (Hampton +188% → -9.4%).
+
+**What the audit shows is broken:**
+
+- **Whitehall's +36% baseline forecast is unsupported by history.**
+  PEP/ACS show Whitehall stable at ~4,000 for 15+ years (3,953-4,046
+  observed range). The forecast extrapolates +1.23%/yr out of an
+  observed +0.03%/yr. A large 30-34 cohort in the ACS 2018-2022
+  pyramid drives cohort-aging math; almost certainly an ACS
+  sampling artifact, not a demographic regime change.
+- **Hampton's 2022 ACS base is 33% above PEP** (ACS 1,145 vs PEP
+  858). Hartford is -13% off. The engine feeds raw ACS midpoints
+  to Hamilton-Perry, so these towns project from a wrong base.
+- **All 17 towns have median CCR coefficient of variation > 0.20
+  across the 10 vintage pairs.** Three exceed 0.50 (Putnam, Dresden,
+  White Creek) — small-town ACS sampling noise dominates signal.
+
+**Recommended next steps** (ranked by payoff in the notebook's §7):
+
+1. Rescale engine base year to PEP sub-est totals (small, removes
+   Hampton/Hartford base-year errors).
+2. Extend IPF to constrain county age × sex marginals, not just
+   totals (mid-effort; addresses Whitehall-style cohort-aging
+   artifacts).
+3. Bayesian shrinkage of town CCRs toward county CCRs (small-area
+   estimation method; reduces variance from sampling noise).
+4. NYSDOH sub-county vital statistics — not currently published
+   by NYSDOH at MCD level, so not actionable without a new source.
+
+No code changes, no production forecasts altered. The notebook
+formalizes the "we can't trust these yet" claim into specific
+quantitative findings.
+
+---
+
 ## 2026-05-27 — `feat/nysdoh-vital-county` (in progress)
 
 Closes [issue #2](https://github.com/donboyd5/popfc/issues/2). Pulls

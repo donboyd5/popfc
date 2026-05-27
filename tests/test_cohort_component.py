@@ -241,3 +241,141 @@ class TestProjectOneCounty:
         base_year_out = out[out["year"] == 2020]
         # All populations should equal 100 at base year.
         assert (base_year_out["population"].astype(float) == 100.0).all()
+
+
+# ---------------------------------------------------------------------------
+# Component mode (Batch 4b)
+# ---------------------------------------------------------------------------
+
+def _make_net_mig_components(m_rate: float = 0.0, p_dom: float = 0.8,
+                             geoid: str = "TEST") -> pd.DataFrame:
+    """Build a synthetic components frame where m_dom + m_int = m_rate per cell."""
+    rows = []
+    m_dom = m_rate * p_dom
+    m_int = m_rate * (1.0 - p_dom)
+    for sex in ("M", "F"):
+        for x in range(0, OMEGA - 1):
+            rows.append({
+                "geoid": geoid, "geography": "T", "year_basis": "test",
+                "sex": sex, "band_type": "closed",
+                "age": x + 1, "source_age": x,
+                "m_total_rate": m_rate, "m_dom_rate": m_dom, "m_int_rate": m_int,
+                "p_dom_county": p_dom, "p_dom_age_effective": p_dom,
+                "n_year_pairs": 1, "share_year_basis": "test",
+                "source": "test", "vintage": "test", "notes": "",
+            })
+        rows.append({
+            "geoid": geoid, "geography": "T", "year_basis": "test",
+            "sex": sex, "band_type": "boundary",
+            "age": OMEGA, "source_age": OMEGA - 1,
+            "m_total_rate": m_rate, "m_dom_rate": m_dom, "m_int_rate": m_int,
+            "p_dom_county": p_dom, "p_dom_age_effective": p_dom,
+            "n_year_pairs": 1, "share_year_basis": "test",
+            "source": "test", "vintage": "test", "notes": "",
+        })
+    return pd.DataFrame(rows)
+
+
+class TestProjectComponentsMode:
+    def test_components_baseline_matches_total_mode(self):
+        # With all multipliers = 1 and m_dom + m_int = m_rate, the two modes
+        # produce identical results.
+        rate = 0.03
+        base_p = _make_base_pop()
+        common = dict(
+            base_pop=base_p, base_year=2020, end_year=2030,
+            survival=_make_survival(0.9), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        out_total = project_one_county(**common)
+        out_comp = project_one_county(
+            **common,
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.8),
+        )
+        # Compare per-cell population for every (year, sex, age).
+        merged = out_total.merge(
+            out_comp, on=["geoid", "year", "sex", "age"],
+            suffixes=("_t", "_c"),
+        )
+        diff = (merged["population_t"].astype(float)
+                - merged["population_c"].astype(float)).abs().max()
+        assert diff < 1e-9
+
+    def test_low_int_reduces_pop_when_int_is_inflow(self):
+        # m_int positive (international inflow) → cutting it shrinks the population.
+        rate = 0.03  # positive net
+        out_baseline = project_one_county(
+            _make_base_pop(), 2020, 2030,
+            survival=_make_survival(0.9), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.6),
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        out_low_int = project_one_county(
+            _make_base_pop(), 2020, 2030,
+            survival=_make_survival(0.9), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.6),
+            net_mig_int_multiplier=0.5,
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        total_2030 = lambda d: float(d[d["year"] == 2030]["population"].sum())
+        assert total_2030(out_low_int) < total_2030(out_baseline)
+
+    def test_per_component_delta_still_applied(self):
+        # net_mig_delta should add to component-mode rates too.
+        rate = 0.0
+        out_no_delta = project_one_county(
+            _make_base_pop(), 2020, 2025,
+            survival=_make_survival(1.0), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.7),
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        out_pos_delta = project_one_county(
+            _make_base_pop(), 2020, 2025,
+            survival=_make_survival(1.0), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.7),
+            net_mig_delta=+0.05,
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        total_2025 = lambda d: float(d[d["year"] == 2025]["population"].sum())
+        assert total_2025(out_pos_delta) > total_2025(out_no_delta)
+
+    def test_projection_vintage_distinguishes_modes(self):
+        # The auto-generated vintage tag should mark which mode produced
+        # the projection so downstream comparisons are unambiguous.
+        rate = 0.0
+        out_total = project_one_county(
+            _make_base_pop(), 2020, 2025,
+            survival=_make_survival(1.0), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        out_comp = project_one_county(
+            _make_base_pop(), 2020, 2025,
+            survival=_make_survival(1.0), asfr=_make_asfr(0.0),
+            net_mig=_make_net_mig(rate),
+            net_mig_components=_make_net_mig_components(rate, p_dom=0.7),
+            geoid="TEST", geography="Test",
+            survival_geoid="TEST", net_mig_geoid="TEST",
+            top_code_age=OMEGA,
+        )
+        v_total = out_total["projection_vintage"].iloc[0]
+        v_comp = out_comp["projection_vintage"].iloc[0]
+        assert v_total.startswith("engine_v2"), f"got {v_total!r}"
+        assert v_comp.startswith("engine_v3"), f"got {v_comp!r}"

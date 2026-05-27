@@ -22,28 +22,30 @@ alone; negative means the opposite.
 
 ## Scenarios
 
-The scenario API exposes three scalar knobs:
+The scenario API exposes scalar knobs on each migration component plus
+fertility:
 
-- `asfr_multiplier` — uniform multiplier on ASFR (e.g., 0.85 for "low
-  fertility", 1.15 for "high"). Fertility is non-negative so a
-  multiplier is well-defined.
-- `net_mig_multiplier` — uniform multiplier on net-migration rates.
-  Useful for "amplify the existing shape" experiments. **Caveat:** a
-  county with positive in-migration at young ages and negative
-  out-migration at working ages will see *both* amplified by a
-  multiplier, which is rarely the intent. Prefer `net_mig_delta` for
-  level shifts.
-- `net_mig_delta` — additive shift to per-cohort migration rates. The
-  age × sex *shape* of migration is preserved; only the *level* moves.
-  Use this to encode scenarios like "if Washington's migration matched
-  its best historical 5-year window" (see
-  `popfc.models.migration.historical_reference_periods`).
+- `asfr_multiplier` — uniform multiplier on ASFR.
+- `net_mig_multiplier` — uniform multiplier on the total net-migration
+  rate (when running without a component decomposition).
+- `net_mig_delta` — additive shift to per-cohort migration rates.
+- `net_mig_dom_multiplier`, `net_mig_int_multiplier` — per-component
+  multipliers, only meaningful when `net_mig_components` is passed.
 
-Effective per-cohort rate:
-    `m_effective(x, sex) = m_rate(x, sex) × net_mig_multiplier + net_mig_delta`
+Effective per-cohort rate (without decomposition):
+    `m_effective(x, s) = m_rate(x, s) × net_mig_multiplier + net_mig_delta`
+
+Effective per-cohort rate (with `net_mig_components`):
+    `m_effective(x, s) = m_dom(x, s) × dom_mult + m_int(x, s) × int_mult + delta`
+
+For Batch 4b: when `net_mig_components` is passed (a NET_MIGRATION_COMPONENTS
+frame from `popfc.models.migration.decompose_net_migration`), the engine
+uses the per-component cell rates instead of the single `m_rate` total.
+With all multipliers = 1.0 and delta = 0.0, m_dom + m_int = m_total per
+cell, so the baseline forecast is identical to the pre-Batch-4b engine.
 
 More expressive scenarios (age-specific overrides, time-varying paths)
-are out of scope for v1.
+remain out of scope for v1.
 """
 
 from __future__ import annotations
@@ -109,6 +111,9 @@ def _compile_inputs(
     asfr_multiplier: float,
     net_mig_multiplier: float,
     net_mig_delta: float = 0.0,
+    net_mig_components: pd.DataFrame | None = None,
+    net_mig_dom_multiplier: float = 1.0,
+    net_mig_int_multiplier: float = 1.0,
 ) -> _CompiledRates:
     """Turn the three input frames into fast lookup arrays."""
     # Survival arrays per sex.
@@ -154,33 +159,65 @@ def _compile_inputs(
     # Net migration arrays per sex.
     m_closed: dict[str, np.ndarray] = {}
     m_boundary: dict[str, float] = {}
-    nm_sub = net_mig[net_mig["geoid"] == net_mig_geoid]
+
+    use_components = net_mig_components is not None
+    if use_components:
+        nm_sub = net_mig_components[net_mig_components["geoid"] == net_mig_geoid]
+        rate_label = "net_mig_components"
+        closed_col_dom = "m_dom_rate"
+        closed_col_int = "m_int_rate"
+    else:
+        nm_sub = net_mig[net_mig["geoid"] == net_mig_geoid]
+        rate_label = "net_migration"
     if nm_sub.empty:
         raise ValueError(
-            f"_compile_inputs: no net_migration rows for geoid={net_mig_geoid!r}"
+            f"_compile_inputs: no {rate_label} rows for geoid={net_mig_geoid!r}"
         )
+
     for sex in ("M", "F"):
         m_sex = nm_sub[nm_sub["sex"] == sex]
         if m_sex.empty:
             raise ValueError(
-                f"_compile_inputs: missing net_mig for sex={sex!r}, "
+                f"_compile_inputs: missing {rate_label} for sex={sex!r}, "
                 f"net_mig_geoid={net_mig_geoid!r}"
             )
         closed_rows = m_sex[m_sex["band_type"] == "closed"]
-        closed = (
-            closed_rows.set_index("source_age")["m_rate"].astype(float).sort_index()
-        )
-        # Fill any missing source-age rates with 0 (the engine has to do
-        # something — a noisy outlier county-year might miss a few cells).
-        full = closed.reindex(range(0, top_code_age - 1)).fillna(0.0)
-        # m_effective = m * multiplier + delta. Multiplier scales the shape;
-        # delta shifts the level. Both default to identity (× 1.0 + 0.0).
-        m_closed[sex] = full.to_numpy() * net_mig_multiplier + net_mig_delta
-        b = m_sex[m_sex["band_type"] == "boundary"]
-        m_boundary[sex] = (
-            float(b["m_rate"].iloc[0]) * net_mig_multiplier + net_mig_delta
-            if not b.empty else net_mig_delta
-        )
+        if use_components:
+            dom = (
+                closed_rows.set_index("source_age")[closed_col_dom]
+                .astype(float).sort_index()
+                .reindex(range(0, top_code_age - 1)).fillna(0.0)
+            )
+            intl = (
+                closed_rows.set_index("source_age")[closed_col_int]
+                .astype(float).sort_index()
+                .reindex(range(0, top_code_age - 1)).fillna(0.0)
+            )
+            m_closed[sex] = (
+                dom.to_numpy() * net_mig_dom_multiplier
+                + intl.to_numpy() * net_mig_int_multiplier
+                + net_mig_delta
+            )
+            b = m_sex[m_sex["band_type"] == "boundary"]
+            if not b.empty:
+                m_boundary[sex] = (
+                    float(b[closed_col_dom].iloc[0]) * net_mig_dom_multiplier
+                    + float(b[closed_col_int].iloc[0]) * net_mig_int_multiplier
+                    + net_mig_delta
+                )
+            else:
+                m_boundary[sex] = net_mig_delta
+        else:
+            closed = (
+                closed_rows.set_index("source_age")["m_rate"].astype(float).sort_index()
+            )
+            full = closed.reindex(range(0, top_code_age - 1)).fillna(0.0)
+            m_closed[sex] = full.to_numpy() * net_mig_multiplier + net_mig_delta
+            b = m_sex[m_sex["band_type"] == "boundary"]
+            m_boundary[sex] = (
+                float(b["m_rate"].iloc[0]) * net_mig_multiplier + net_mig_delta
+                if not b.empty else net_mig_delta
+            )
 
     # ASFR array indexed by mother's age REPRO_AGE_MIN..REPRO_AGE_MAX.
     asfr_grouped = (
@@ -297,19 +334,32 @@ def project_one_county(
     asfr_multiplier: float = 1.0,
     net_mig_multiplier: float = 1.0,
     net_mig_delta: float = 0.0,
+    net_mig_components: pd.DataFrame | None = None,
+    net_mig_dom_multiplier: float = 1.0,
+    net_mig_int_multiplier: float = 1.0,
     scenario: str = "baseline",
     projection_vintage: str | None = None,
 ) -> pd.DataFrame:
     """Project one county's population from base_year to end_year (inclusive).
 
-    The migration knobs combine multiplicatively and additively:
+    Migration scenarios — two modes:
 
-        m_effective(x, sex) = m_rate(x, sex) × net_mig_multiplier + net_mig_delta
+    - **Total mode** (default, `net_mig_components=None`): the engine uses
+      the single `m_rate` column from `net_mig`. Effective rate:
+        m_effective(x, s) = m_rate(x, s) × net_mig_multiplier + net_mig_delta
+    - **Component mode** (pass `net_mig_components`): the engine uses the
+      decomposed `m_dom_rate` and `m_int_rate` columns. Effective rate:
+        m_effective(x, s) = m_dom × dom_mult + m_int × int_mult + delta
+      where dom_mult and int_mult default to 1.0 (baseline matches the
+      total-mode baseline exactly because m_dom + m_int = m_total per cell).
 
     `net_mig_delta` is the preferred way to express level shifts (e.g.,
     "if migration matched this historical 5-year window"); see
-    `popfc.models.migration.historical_reference_periods`. `net_mig_multiplier`
-    is kept for amplify-the-shape experiments.
+    `popfc.models.migration.historical_reference_periods`. Per-component
+    multipliers are appropriate for "what if international slowed but
+    domestic held" style scenarios — note that counties flagged
+    ``p_dom_unstable`` in the components frame can produce large net swings
+    from small component multiplier changes.
 
     Returns a long-format DataFrame conforming to PROJECTION_COLUMNS, with
     one row per (year, sex, age) including the base year.
@@ -319,11 +369,18 @@ def project_one_county(
     if net_mig_geoid is None:
         net_mig_geoid = geoid
     if projection_vintage is None:
-        # Encode all three knobs so different scenarios are distinguishable.
-        projection_vintage = (
-            f"engine_v2_asfr_x{asfr_multiplier:.3f}"
-            f"_netmig_x{net_mig_multiplier:.3f}_d{net_mig_delta:+.5f}"
-        )
+        if net_mig_components is not None:
+            projection_vintage = (
+                f"engine_v3_asfr_x{asfr_multiplier:.3f}"
+                f"_dom_x{net_mig_dom_multiplier:.3f}"
+                f"_int_x{net_mig_int_multiplier:.3f}"
+                f"_d{net_mig_delta:+.5f}"
+            )
+        else:
+            projection_vintage = (
+                f"engine_v2_asfr_x{asfr_multiplier:.3f}"
+                f"_netmig_x{net_mig_multiplier:.3f}_d{net_mig_delta:+.5f}"
+            )
 
     rates = _compile_inputs(
         survival, asfr, net_mig,
@@ -334,6 +391,9 @@ def project_one_county(
         asfr_multiplier=asfr_multiplier,
         net_mig_multiplier=net_mig_multiplier,
         net_mig_delta=net_mig_delta,
+        net_mig_components=net_mig_components,
+        net_mig_dom_multiplier=net_mig_dom_multiplier,
+        net_mig_int_multiplier=net_mig_int_multiplier,
     )
 
     if geography is None:

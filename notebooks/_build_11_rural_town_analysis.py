@@ -390,10 +390,15 @@ share_all = share_all.merge(old_share_yearly, on=["geoid", "year"], how="left")
 share_all["women_15_49_share"] = share_all["women_15_49_share"].fillna(share_all["total_pop_share"])
 share_all["pop_65plus_share"] = share_all["pop_65plus_share"].fillna(share_all["total_pop_share"])
 
-# Long-format component values per (county_fips, year, measure).
-comp_long = components[components["measure"].isin([
-    "births", "deaths", "domestic_mig", "international_mig", "natural_change"
-])][["geoid", "year", "measure", "value"]].rename(
+# Long-format component values per (county_fips, year, measure). Filter to
+# census_pep — the components frame now also carries NYSDOH births/deaths
+# (issue #2), which would double-count if both were merged into the allocator.
+comp_long = components[
+    (components["source"] == "census_pep")
+    & components["measure"].isin([
+        "births", "deaths", "domestic_mig", "international_mig", "natural_change"
+    ])
+][["geoid", "year", "measure", "value"]].rename(
     columns={"geoid": "county_fips", "value": "county_value"}
 )
 comp_long["county_value"] = comp_long["county_value"].astype("Float64")

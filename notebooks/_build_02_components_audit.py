@@ -620,20 +620,175 @@ print("differ between the two flows.")
 """),
     # ---------------------------------------------------------------
     md("""
+## 4c. Cross-source audit — NYSDOH vital stats vs Census PEP
+
+PEP's `births` and `deaths` are *Census-tabulated estimates* derived
+from administrative vital-event records — they're not independent of
+the resident-county event certifications. NYSDOH's `Vital Statistics
+Live Births by Mother's Age and Resident County` and `Vital Statistics
+Deaths by Resident County, Region, and Age-Group` give us a separate
+view from the same underlying records, with NYSDOH's own tabulation
+and a year of lag for deaths. Comparing the two surfaces:
+
+- **Tabulation differences** — small, expected (residence vs
+  occurrence; late registrations).
+- **Vintage-revision differences** — PEP revises older years when
+  new SYA is released; NYSDOH does not retrospect.
+- **Coverage gaps** — anomalous years where one source has a partial
+  count (e.g., the V2020 PEP base-year transition).
+
+Note: NYSDOH deaths typically lag a year or two behind births due to
+death-certificate processing time. The cross-comparison uses the
+common year range only.
+"""),
+    code("""
+from popfc.data.nysdoh_vital import load_nysdoh_births, load_nysdoh_deaths
+
+# Both calls hit the local cache if it exists; otherwise they pull from
+# the API and cache. The vintage tag tracks NYSDOH's data-publication date.
+nysdoh_b = load_nysdoh_births()
+nysdoh_d = load_nysdoh_deaths()
+print(f"NYSDOH births: {len(nysdoh_b['totals']):,} county-year rows, "
+      f"{nysdoh_b['totals']['year'].min()}-{nysdoh_b['totals']['year'].max()}, "
+      f"vintage={nysdoh_b['totals']['vintage'].iloc[0]}")
+print(f"NYSDOH deaths: {len(nysdoh_d['totals']):,} county-year rows, "
+      f"{nysdoh_d['totals']['year'].min()}-{nysdoh_d['totals']['year'].max()}, "
+      f"vintage={nysdoh_d['totals']['vintage'].iloc[0]}")
+
+# Join NYSDOH to PEP on (geoid, year, measure).
+pep_bd = comp_pep_res[comp_pep_res["measure"].isin(["births", "deaths"])][
+    ["geoid", "geography", "year", "measure", "value"]
+].rename(columns={"value": "pep_value"}).copy()
+nysdoh_bd = pd.concat([nysdoh_b["totals"], nysdoh_d["totals"]], ignore_index=True)[
+    ["geoid", "year", "measure", "value"]
+].rename(columns={"value": "nysdoh_value"}).copy()
+
+audit = pep_bd.merge(nysdoh_bd, on=["geoid", "year", "measure"], how="inner")
+audit["pep_value"] = audit["pep_value"].astype("Float64")
+audit["nysdoh_value"] = audit["nysdoh_value"].astype("Float64")
+audit["abs_diff"] = audit["nysdoh_value"] - audit["pep_value"]
+audit["pct_diff"] = 100.0 * audit["abs_diff"] / audit["pep_value"]
+print(f"\\naudit rows: {len(audit):,} (county × year × measure intersections)")
+"""),
+    code("""
+# Summary by measure × year range — distribution of % differences.
+print("Distribution of NYSDOH − PEP % differences (across all 62 counties):")
+for measure in ("births", "deaths"):
+    sub = audit[audit["measure"] == measure]
+    summary = sub["pct_diff"].astype(float).describe(
+        percentiles=[0.05, 0.25, 0.5, 0.75, 0.95]
+    )
+    print(f"\\n  {measure} (n={len(sub):,}, years {int(sub['year'].min())}-{int(sub['year'].max())})")
+    print(summary.to_string())
+
+# Surface the years where PEP is anomalously low/high vs NYSDOH (|pct_diff| > 50%).
+print("\\nCounty-years with |NYSDOH − PEP| / PEP > 50% — likely PEP coverage gaps:")
+anomalies = audit[audit["pct_diff"].astype(float).abs() > 50.0].copy()
+print(f"  count: {len(anomalies):,}")
+if not anomalies.empty:
+    # Group by year to surface systematic issues (e.g., V2020 base-year transition).
+    by_year = anomalies.groupby("year").size().sort_values(ascending=False).head(10)
+    print(f"  top years by # of anomalies:")
+    for y, n in by_year.items():
+        print(f"    {y}: {n}")
+"""),
+    code("""
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+for ax, measure in zip(axes, ("births", "deaths")):
+    sub = audit[audit["measure"] == measure].copy()
+    # Exclude the obvious V2020 anomaly so the scatter is readable.
+    sub_main = sub[sub["pct_diff"].astype(float).abs() <= 50.0]
+    ax.scatter(
+        sub_main["pep_value"].astype(float), sub_main["nysdoh_value"].astype(float),
+        s=14, alpha=0.35, color="C0",
+    )
+    # Highlight cohort counties.
+    cohort_set = {"36115", "36091", "36113", "36083", "36031", "36021"}
+    coh = sub[sub["geoid"].isin(cohort_set)]
+    ax.scatter(
+        coh["pep_value"].astype(float), coh["nysdoh_value"].astype(float),
+        s=36, color="C3", label="Cohort counties", edgecolor="black", linewidth=0.4,
+    )
+    # 1:1 reference line.
+    lim_max = max(sub_main["pep_value"].astype(float).max(),
+                  sub_main["nysdoh_value"].astype(float).max())
+    ax.plot([0, lim_max], [0, lim_max], color="grey", linewidth=0.6,
+            linestyle="--", label="1:1")
+    ax.set_xlabel(f"PEP {measure}")
+    ax.set_ylabel(f"NYSDOH {measure}")
+    ax.set_title(f"{measure.title()} — NYSDOH vs PEP, all NY counties")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+fig.tight_layout()
+plt.show()
+"""),
+    code("""
+# Washington time series — both sources side by side.
+WASH = "36115"
+wash_audit = audit[audit["geoid"] == WASH].sort_values(["measure", "year"])
+print("Washington — NYSDOH vs PEP, by year:")
+piv = wash_audit.pivot_table(
+    index="year", columns="measure", values=["pep_value", "nysdoh_value"]
+)
+print(piv.astype("Int64").to_string())
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
+for ax, measure in zip(axes, ("births", "deaths")):
+    s = wash_audit[wash_audit["measure"] == measure].sort_values("year")
+    ax.plot(s["year"], s["pep_value"].astype(float),
+            marker="o", linewidth=1.5, color="C0", label="PEP")
+    ax.plot(s["year"], s["nysdoh_value"].astype(float),
+            marker="s", linewidth=1.5, color="C3", label="NYSDOH")
+    ax.set_title(f"Washington County — {measure}")
+    ax.set_xlabel("year")
+    ax.set_ylabel(f"{measure}")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+fig.tight_layout()
+plt.show()
+"""),
+    md("""
+**Reading the comparison.** The scatter plots (with the V2020 partial-
+year anomaly clipped out for readability) should show NYSDOH and PEP
+tightly clustered around the 1:1 line for most county-years. The
+Washington time series makes the V2020 anomaly visible directly —
+PEP's 2020 row is a small fraction of NYSDOH's full-year count because
+PEP 2020 is a base-year transition row, not a full-year estimate.
+Downstream uses of `births` and `deaths` from `comp_pep_res` should
+treat 2020 as a data gap rather than a real-event count.
+
+The full NYSDOH births and deaths frames will be saved alongside the
+PEP-resolved frame in §5 so downstream notebooks can pick the
+authoritative source per measure-year.
+"""),
+    # ---------------------------------------------------------------
+    md("""
 ## 5. Save the components frame
 
-Long-format Census PEP components for downstream forecasting work. NYSDOH
-and NCHS vital-stats components are not yet incorporated — they require
-API pulls (deferred). When they are added, this notebook should be
-re-run and `county_components.parquet` extended with `source='nysdoh'` /
-`source='nchs'` rows.
+Long-format Census PEP components plus NYSDOH vital-stats components.
+NYSDOH rows carry `source='nysdoh_vital'`; PEP rows carry
+`source='census_pep'`. Downstream consumers can filter by `source` to
+pick the authoritative tabulation per measure-year, or compare them
+where they overlap.
 """),
     code("""
 DATA_INTERIM.mkdir(parents=True, exist_ok=True)
+# Combine PEP-resolved with NYSDOH births + deaths.
+nysdoh_long = pd.concat([nysdoh_b["totals"], nysdoh_d["totals"]], ignore_index=True)
+# Align dtypes for the union.
+nysdoh_long["value"] = nysdoh_long["value"].astype("Float64")
+nysdoh_long["year"] = nysdoh_long["year"].astype("Int64")
+nysdoh_long = nysdoh_long[comp_pep_res.columns]  # column-order match
+
+combined = pd.concat([comp_pep_res, nysdoh_long], ignore_index=True)
+print(f"combined components rows: {len(combined):,}  "
+      f"({len(comp_pep_res):,} PEP + {len(nysdoh_long):,} NYSDOH)")
+
 components_path = DATA_INTERIM / "county_components.parquet"
-comp_pep_res.to_parquet(components_path, index=False)
-print(f"wrote {components_path}  ({len(comp_pep_res):,} rows)")
-print(f"measures: {sorted(comp_pep_res['measure'].unique())}")
+combined.to_parquet(components_path, index=False)
+print(f"wrote {components_path}")
+print(f"measures: {sorted(combined['measure'].unique())}")
+print(f"sources: {sorted(combined['source'].unique())}")
 """),
     # ---------------------------------------------------------------
     md("""
@@ -641,10 +796,13 @@ print(f"measures: {sorted(comp_pep_res['measure'].unique())}")
 """),
     code("""
 def qa_components(df: pd.DataFrame) -> None:
-    # 1. Unique on (geoid, year, measure, vintage) after resolution
-    dup = df.groupby(["geoid", "year", "measure"]).size()
-    assert (dup == 1).all(), f"Duplicate (geoid, year, measure): {dup[dup>1]}"
-    print("OK — unique (geoid, year, measure).")
+    # 1. Unique on (geoid, year, measure, source) after resolution. Note
+    #    that births/deaths exist with both source='census_pep' AND
+    #    source='nysdoh_vital' in overlapping years — that's intentional
+    #    cross-source coverage, not a duplicate.
+    dup = df.groupby(["geoid", "year", "measure", "source"]).size()
+    assert (dup == 1).all(), f"Duplicate (geoid, year, measure, source): {dup[dup>1]}"
+    print("OK — unique (geoid, year, measure, source).")
     # 2. Rate measures finite and within plausible bounds (per 1,000)
     rate_rows = df[df["measure"].astype(str).str.startswith("rate_")]
     if not rate_rows.empty:
@@ -656,8 +814,14 @@ def qa_components(df: pd.DataFrame) -> None:
             print(bad.head().to_string(index=False))
         else:
             print("OK — all rate values within |value| ≤ 200 per 1000.")
+    # 3. PEP-only uniqueness — the original Phase 1 invariant.
+    pep_only = df[df["source"] == "census_pep"]
+    pep_dup = pep_only.groupby(["geoid", "year", "measure"]).size()
+    assert (pep_dup == 1).all(), \
+        f"PEP-only duplicate (geoid, year, measure): {pep_dup[pep_dup > 1]}"
+    print(f"OK — PEP rows unique on (geoid, year, measure); {len(pep_only):,} PEP rows.")
 
-qa_components(comp_pep_res)
+qa_components(combined)
 """),
     # ---------------------------------------------------------------
     md("""

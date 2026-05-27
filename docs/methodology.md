@@ -334,22 +334,77 @@ when the *net* is small.
   requires either symmetric assumptions or an external data source
   (state-level migration profiles, IRS state-by-age data, etc.).
 
-**Engine extension (deferred to Batch 4b).** A clean implementation
-would estimate per-component age × sex profiles by combining:
+**Engine extension — now implemented (Batch 4b).** The decomposition
+runs as a three-input combination:
 
-- ACS B07001 county-level inflow profiles (age × component-of-origin)
-  for the **domestic vs international shape of inflows**.
-- Demographic-rate assumptions or state-level IRS migration-by-age
-  data for the **outflow age profile** (a known compromise).
-- PEP-published net domestic + net international counts as the
-  per-year levels to match.
+1. **Per-cell `m_total(g, s, a)`** from the residual method
+   (`build_net_migration_rates`, unchanged from Phase 3).
+2. **County-aggregate signed share** from PEP V2025:
+   `p_dom_county(g) = sum_y dom_mig(g, y) / (sum_y dom_mig(g, y) + sum_y int_mig(g, y))`
+   over the most recent 6 years (2019-2024). The "signed" qualifier
+   matters — when a county's two components have opposite signs and
+   the net is small (Essex `+6 = −26 + +32`), p_dom can land far
+   outside [0, 1]. Washington's p_dom is +1.60; Columbia's is +13.74;
+   Suffolk's is −7.84.
+3. **State-aggregate age shape** from ACS B07001 5-year 2019-2023:
+   per age band, `f_dom(a) = (different-county-same-state +
+   different-state) / (...same state + different state + abroad)`.
+   Intra-county moves are excluded (they don't change county-level
+   net migration). For NY-state aggregate, f_dom varies modestly —
+   0.81 at age 5-17 (kids are slightly more often from international
+   families) up to 0.91 at age 18-19 (college moves are
+   overwhelmingly domestic).
 
-The engine would then accept two rate vectors (`net_mig_domestic`
-and `net_mig_international`) plus the existing `net_mig_delta` knob.
-Scenarios could vary one or both independently — e.g., "what if
-domestic out-migration recovered but international stayed at its
-post-COVID elevated level?" That work is genuinely a separate piece
-because of the per-component shape estimation effort.
+The decomposition is exact at the cell level:
+`m_dom(g, s, a) + m_int(g, s, a) = m_total(g, s, a)` always, regardless
+of `p_dom_county` magnitude or sign. The per-cell effective domestic
+factor is:
+
+```
+p_dom_eff(g, a) = p_dom_county(g) + (f_dom(a) - f_dom_mean) × tilt_factor
+m_dom(g, s, a)  = m_total(g, s, a) × p_dom_eff(g, a)
+m_int(g, s, a)  = m_total(g, s, a) × (1 - p_dom_eff(g, a))
+```
+
+with `tilt_factor` defaulting to 1.0 (full age tilt). Setting
+`tilt_factor=0` recovers the simpler degenerate-at-age-level
+decomposition (Tier 1) where every cell uses the same county-level
+share.
+
+**Engine scenarios**. `project_one_county()` accepts the components
+frame and per-component multipliers. Effective rate:
+
+```
+m_eff(s, a) = m_dom(s, a) × dom_mult + m_int(s, a) × int_mult + delta
+```
+
+Baseline invariance: when both multipliers equal 1.0 and `delta=0`,
+the engine output is bit-identical to the legacy single-rate path
+(verified to floating-point precision). Component-mode projections
+get vintage tag `engine_v3_...`; legacy total-mode tags remain
+`engine_v2_...`.
+
+**Stability flag.** Counties with `|p_dom_county| > 5` (8 of 62: Erie,
+Niagara, Richmond, Rockland, Suffolk, Wayne, Westchester, Columbia)
+carry a `p_dom_unstable` note. These counties have components that
+roughly cancel — their net is small relative to component magnitudes,
+so a 50% reduction in one component can flip the sign of their net
+migration. Scenario results for these counties should be interpreted
+carefully.
+
+**Example — Washington 2050 baseline:**
+
+| Scenario | 2050 pop | Δ vs baseline |
+|---|---|---|
+| baseline / comp_baseline | 47,991 | — |
+| comp_low_int (international × 0.5) | 46,710 | −1,281 |
+| comp_low_dom (domestic × 0.5) | 50,674 | +2,683 |
+
+The asymmetry reflects Washington's component pattern: domestic is
+larger in magnitude (-135/yr) and international smaller (+51/yr), so
+the same proportional cut has a bigger absolute effect on domestic.
+The signs are coherent: cutting international inflow shrinks the
+population; cutting domestic out-migration grows it.
 
 ### USALEEP-based county mortality differentials (diagnostic only)
 

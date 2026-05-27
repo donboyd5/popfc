@@ -11,6 +11,93 @@ the substantive changes. Entries are newest first.
 
 ---
 
+## 2026-05-27 — `feat/migration-decomposition-engine` (in progress)
+
+Batch 4b: closes the queued "biggest remaining piece" by decomposing
+each per-cell net migration rate into domestic + international
+components and extending the cohort-component engine to accept separate
+per-component scenario knobs.
+
+**Data integration**:
+
+- **PEP V2025** publishes county-year `domestic_mig` and
+  `international_mig` separately — these provide the county-level
+  *signed* domestic share `p_dom_county = sum(dom) / (sum(dom) + sum(int))`
+  averaged over 2019-2024. The factor is *signed* (can fall outside
+  [0, 1] when components offset each other — e.g., Washington's
+  `p_dom = +1.60`, Essex's `-3.92`, Columbia's `+13.74`).
+- **ACS B07001** (Geographical Mobility by Age, 5-year 2019-2023) pulled
+  via the existing ACS infrastructure. State-aggregate `f_dom(age)`
+  varies modestly (0.81 at age 5-17 → 0.91 at age 18-19, with most
+  ages 0.83-0.87), providing a mild age tilt to the per-cell
+  decomposition.
+
+**New code** in `popfc.models.migration`:
+
+- `b07001_age_component_shape(b07001_long, state_filter=...)` — parses
+  the 96-variable B07001 long frame and returns a per-band
+  domestic / international / f_dom DataFrame.
+- `expand_age_shape_to_single_year(shape_band, top_code_age=85)` —
+  expands band-level shape to single-year ages (uniform within band).
+- `decompose_net_migration(net_mig, pep_components, age_shape_single_year=None, ...)`
+  — produces a NET_MIGRATION_COMPONENTS frame: per (geoid, sex, age)
+  cell with `m_total_rate`, `m_dom_rate`, `m_int_rate`,
+  `p_dom_county`, `p_dom_age_effective`. Cell-sum identity
+  `m_dom + m_int = m_total` is exact (drift < 1e-12).
+- Counties with `|p_dom_county| > 5` (8 counties — Columbia, Erie,
+  Niagara, Richmond, Rockland, Suffolk, Wayne, Westchester) are
+  annotated as **`p_dom_unstable`** because their components offset
+  each other near zero net — component multiplier scenarios produce
+  outsized swings in those counties and the flag warns downstream
+  users.
+
+**Engine extension** in `popfc.models.cohort_component`:
+
+- `project_one_county()` gains three new keyword args:
+  `net_mig_components`, `net_mig_dom_multiplier`, `net_mig_int_multiplier`.
+- Effective rate (component mode):
+  `m_eff = m_dom × dom_mult + m_int × int_mult + delta`.
+- **Baseline invariance**: with all multipliers = 1.0 and
+  `m_dom + m_int = m_total`, the projection is bit-identical to
+  total mode (verified to 1e-9 across all years/sexes/ages).
+- The auto-generated `projection_vintage` tag now distinguishes
+  `engine_v3_...` (component mode) from `engine_v2_...` (total mode).
+
+**Notebook 07 §7** — new decomposition section: pulls B07001, computes
+state-aggregate shape, decomposes statewide, plots f_dom by age band,
+plots per-county p_dom distribution (highlighting unstable counties),
+plots Washington's m_dom vs m_int by age, and saves
+`net_migration_components.parquet` (10,540 rows × 17 cols).
+
+**Notebook 08 §5c** — new component scenarios section runs three
+component scenarios alongside the historical-reference framework:
+`comp_baseline`, `comp_low_int` (international × 0.5),
+`comp_low_dom` (domestic × 0.5). Saves
+`county_forecasts_components.parquet`.
+
+**Component scenario impact, Washington 2050**:
+
+| Scenario | 2050 pop | Δ vs comp_baseline |
+|---|---|---|
+| comp_baseline (= regular baseline) | 47,991 | base |
+| comp_low_int | 46,710 | −1,281 |
+| comp_low_dom | 50,674 | +2,683 |
+
+Washington's two components are signed-opposite: domestic is net
+out (-135/yr), international is net in (+51/yr). Halving
+international amplifies the net out-migration → smaller pop.
+Halving domestic out-migration → larger pop. The asymmetry
+(low_dom Δ > |low_int Δ|) reflects domestic's larger absolute size.
+
+**15 new tests** across `tests/test_migration.py` (B07001 shape
+parser, age-band expansion, decomposition cell-sum identity,
+opposite-sign components, instability flag, age-tilt zero-factor
+matches Tier 1) and `tests/test_cohort_component.py` (baseline
+invariance, scenario directionality, delta still applied,
+vintage tag distinguishes modes). **182 total tests pass.**
+
+---
+
 ## 2026-05-26 — `feat/mortality-usaleep-ratio` (in progress)
 
 Post-review follow-up #2: closes the Batch 7 "queued refinement" by

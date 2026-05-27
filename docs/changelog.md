@@ -11,6 +11,65 @@ the substantive changes. Entries are newest first.
 
 ---
 
+## 2026-05-27 — `feat/nysdoh-vital-county` (in progress)
+
+Closes [issue #2](https://github.com/donboyd5/popfc/issues/2). Pulls
+NYSDOH vital statistics (births + deaths) via Socrata, adds a
+cross-source audit panel to Notebook 02, and extends
+`county_components.parquet` with `source='nysdoh_vital'` rows.
+
+**New code** in `popfc.data.nysdoh_vital`:
+
+- `load_nysdoh_births()` — pulls `i7yg-w5rg` (Live Births by Mother's
+  Age and Resident County, 2008+). Returns `totals` (county-year
+  totals in `COMPONENTS_LONG_COLUMNS`) and `by_mother_age` (full
+  detail). Uses the API's published `Total` row, not summed detail.
+- `load_nysdoh_deaths()` — pulls `xit9-mprv` (Deaths by Resident
+  County, Region, Age-Group, 2003+). Same shape.
+- Caches raw API responses under `data_raw/nysdoh/api/` keyed by
+  the dataset's data-publication date (from Socrata `rowsUpdatedAt`).
+  UTC date used for cross-machine determinism.
+- Vintage tag format: `nysdoh_vital_YYYYMMDD`.
+- Supports `NYSDOH_SOCRATA_APP_TOKEN` env var for higher rate limits
+  (anonymous queries also work — datasets are small enough).
+
+**Notebook 02 §4c** — cross-source audit comparing NYSDOH vs PEP
+births and deaths for every county-year intersection. Reports
+distribution of % differences, scatter (1:1 line + cohort highlight),
+and Washington time-series side-by-side. Section §5 now saves the
+combined PEP + NYSDOH frame to `county_components.parquet`
+(14,742 PEP rows + 2,170 NYSDOH rows = 16,912 total).
+
+**Headline finding**: PEP's 2020 county births/deaths rows are
+**fragmentary base-year transition values**, not full-year counts.
+Washington 2020:
+
+| Source | 2020 births | 2020 deaths |
+|---|---|---|
+| PEP | 142 | 164 |
+| NYSDOH | 532 | 765 |
+
+Pre-2020 and post-2021 the two sources agree to ±5%. The 2020 gap
+was previously invisible because PEP was self-checking. Downstream
+code that uses `births` and `deaths` from `comp_pep_res` should
+treat 2020 as a data gap.
+
+**Notebook 11** updated to filter to `source='census_pep'` in its
+town-level component allocator, so the new NYSDOH rows don't
+double-count through the population-share merge.
+
+**QA invariants** updated: uniqueness now keyed on
+`(geoid, year, measure, source)` to allow the deliberate dual-source
+coverage. The original PEP-only uniqueness invariant is checked
+separately.
+
+**9 new tests** for the Socrata fetch + parse, cache round-trip,
+vintage formatting, aggregate-row handling, and a live-data smoke
+check that runs when a prior cache is present. **191 total tests pass.**
+Forecasts unchanged at baseline.
+
+---
+
 ## 2026-05-27 — `feat/migration-decomposition-engine` (in progress)
 
 Batch 4b: closes the queued "biggest remaining piece" by decomposing

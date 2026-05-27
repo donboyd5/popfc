@@ -578,6 +578,7 @@ For full coverage details see `docs/data_dictionary.md`. Briefly:
 | CDC Bridged-Race | County single-year-of-age × sex × race × year, 1990-2020 | Discontinued | Washington pre-2020 age × sex history |
 | NCHS NVSR | National + state life tables | Annual NVSR issues | Survival rates (current: US 2023, NY 2022) |
 | NCHS USALEEP | Tract life expectancy 2010-2015 | Static (not refreshed) | Quality check: Washington tracts vs NY state median e(0) |
+| NYSDOH Vital | County births by mother's age (2008+); county deaths by age group (2003+); Socrata API | Annual, lagging (births ~6mo, deaths ~24mo) | Cross-source audit vs PEP births/deaths in Notebook 02 — surfaces PEP coverage gaps (e.g., V2020 partial-year transition rows) |
 | ACS 5-year | Detailed county + MCD tables | Annual (current: 2020-2024) | Town age × sex (HP base); migration profiles (B07001, B06001) |
 | Cornell PAD | NY county projections (pre-pandemic) | Static | Benchmark for the engine's county forecasts |
 

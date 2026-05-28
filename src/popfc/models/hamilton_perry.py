@@ -481,3 +481,240 @@ def project_one_county_hp(
     out = pd.concat(rows_out, ignore_index=True)
     out["population"] = out["population"].astype("Float64")
     return out[HP_PROJECTION_COLUMNS]
+
+
+# ---------------------------------------------------------------------------
+# v3 input-quality refinements (Notebook 12 audit follow-ups)
+# ---------------------------------------------------------------------------
+
+def rescale_base_to_target(
+    pop_base: pd.DataFrame,
+    target_totals: pd.DataFrame | pd.Series | dict,
+    *,
+    geoid_col: str = "geoid",
+    population_col: str = "population",
+    min_factor: float = 0.5,
+    max_factor: float = 2.0,
+) -> pd.DataFrame:
+    """Proportionally rescale each geography's age × sex base to a target total.
+
+    Hamilton-Perry feeds an ACS 5-year midpoint pyramid as the base
+    population. For small towns the ACS total can disagree materially with
+    the authoritative PEP sub-est total (the Notebook-12 audit found
+    Hampton's ACS base +33% above PEP, Hartford -13%). This function scales
+    every (sex, age band) cell of a geography by a single factor so the
+    geography's total matches its `target_totals` value, preserving the ACS
+    pyramid *shape* while fixing the *level*.
+
+    Parameters
+    ----------
+    pop_base
+        5-yr-band frame with at least `geoid`, `population` columns
+        (output of `aggregate_b01001_to_5yr_bands`).
+    target_totals
+        Per-geography target totals. Accepts a DataFrame with
+        `geoid` + a total column (`population` or `total`), a Series
+        indexed by geoid, or a {geoid: total} dict.
+    min_factor, max_factor
+        Clip the per-geography scale factor to this range. A town whose
+        ACS base disagrees with PEP by more than 2× is more likely a
+        geography-matching problem than a real level error, so we cap the
+        adjustment and warn rather than apply a wild rescale.
+
+    Returns
+    -------
+    A copy of `pop_base` with `population` rescaled and an added
+    `rescale_factor` column recording the per-geography factor applied.
+    Geographies absent from `target_totals` are passed through unchanged
+    (factor 1.0).
+    """
+    # Normalize target_totals to a {geoid: total} mapping.
+    if isinstance(target_totals, pd.DataFrame):
+        total_col = "population" if "population" in target_totals.columns else "total"
+        tmap = dict(zip(target_totals[geoid_col].astype(str),
+                        target_totals[total_col].astype(float)))
+    elif isinstance(target_totals, pd.Series):
+        tmap = {str(k): float(v) for k, v in target_totals.items()}
+    else:
+        tmap = {str(k): float(v) for k, v in dict(target_totals).items()}
+
+    df = pop_base.copy()
+    current_totals = df.groupby(geoid_col)[population_col].transform("sum")
+
+    factors = {}
+    warnings_list = []
+    for g in df[geoid_col].astype(str).unique():
+        cur = float(df[df[geoid_col].astype(str) == g][population_col].sum())
+        tgt = tmap.get(g)
+        if tgt is None or cur <= 0:
+            factors[g] = 1.0
+            continue
+        f = tgt / cur
+        if f < min_factor or f > max_factor:
+            warnings_list.append((g, f))
+            f = max(min_factor, min(max_factor, f))
+        factors[g] = f
+
+    if warnings_list:
+        import warnings
+        worst = ", ".join(f"{g}:{f:.2f}" for g, f in warnings_list[:5])
+        warnings.warn(
+            f"rescale_base_to_target: {len(warnings_list)} geographies had "
+            f"a rescale factor outside [{min_factor}, {max_factor}] and were "
+            f"clipped (e.g., {worst}). These usually indicate ACS/PEP "
+            "geography mismatch rather than a real level error.",
+            stacklevel=2,
+        )
+
+    df["rescale_factor"] = df[geoid_col].astype(str).map(factors).fillna(1.0)
+    df[population_col] = df[population_col].astype(float) * df["rescale_factor"]
+    return df
+
+
+def aggregate_history_to_parent(
+    agesex_history: pd.DataFrame,
+    *,
+    parent_geoid: str,
+    parent_geography: str | None = None,
+) -> pd.DataFrame:
+    """Sum a multi-geography age × sex history into a single parent geography.
+
+    Used to build a county-aggregate CCR reference from the same ACS town
+    history that feeds the per-town CCRs, so the reference is directly
+    comparable (same source, same vintages, same bands).
+
+    Parameters
+    ----------
+    agesex_history
+        Long-format frame with `sex`, `age_band_start`, `age_band_end`,
+        `population`, `vintage_midpoint_year` (the columns
+        `cohort_change_ratios_multi_vintage` requires).
+    parent_geoid
+        Geoid to assign the aggregated rows.
+    parent_geography
+        Optional label; defaults to ``f"{parent_geoid} (aggregate)"``.
+    """
+    group_cols = ["sex", "age_band_start", "age_band_end", "vintage_midpoint_year"]
+    missing = set(group_cols) - set(agesex_history.columns)
+    if missing:
+        raise ValueError(
+            f"aggregate_history_to_parent: missing columns {sorted(missing)}"
+        )
+    agg = agesex_history.groupby(group_cols, as_index=False)["population"].sum()
+    agg["geoid"] = parent_geoid
+    agg["geography"] = parent_geography or f"{parent_geoid} (aggregate)"
+    return agg
+
+
+def population_shrinkage_weights(
+    pop_base: pd.DataFrame,
+    *,
+    k: float = 2000.0,
+    geoid_col: str = "geoid",
+    population_col: str = "population",
+) -> pd.Series:
+    """Per-geography shrinkage weight ``w = P / (P + k)`` for CCR shrinkage.
+
+    Larger geographies trust their own (more reliable) CCRs; smaller ones
+    are pulled harder toward the parent. With the default ``k = 2000``
+    (the project's rural-town threshold), a town of 2,000 gets w = 0.5,
+    a town of 12,000 gets w ≈ 0.86, and a town of 500 gets w = 0.20.
+
+    Returns a Series indexed by geoid with values in (0, 1).
+    """
+    totals = pop_base.groupby(geoid_col)[population_col].sum().astype(float)
+    return totals / (totals + k)
+
+
+def shrink_ccrs_toward_reference(
+    town_ccr: pd.DataFrame,
+    reference_ccr: pd.DataFrame,
+    *,
+    town_weights: pd.Series | dict,
+    ccr_col: str = "ccr",
+) -> pd.DataFrame:
+    """Shrink per-town CCRs toward a parent reference CCR (small-area estimation).
+
+    For each (geoid, sex, age_band_start) cell:
+
+        ccr_shrunk = w_geoid · ccr_town + (1 − w_geoid) · ccr_reference
+
+    where `ccr_reference` is the parent (county-aggregate) CCR for the
+    matching (sex, age_band_start). Cells with no reference match keep
+    their town value (w effectively 1).
+
+    Parameters
+    ----------
+    town_ccr
+        Per-town CCR frame (`geoid`, `sex`, `age_band_start`, `ccr`, …),
+        e.g. from `cohort_change_ratios_multi_vintage`.
+    reference_ccr
+        Parent CCR frame with `sex`, `age_band_start`, `ccr`. Any `geoid`
+        column is ignored.
+    town_weights
+        geoid → w in [0, 1]. Use `population_shrinkage_weights`.
+    ccr_col
+        Name of the CCR column in both frames.
+
+    Returns
+    -------
+    Copy of `town_ccr` with `ccr` replaced by the shrunk value and added
+    columns `ccr_town` (pre-shrinkage), `ccr_reference`, `shrink_weight`.
+    """
+    wmap = ({str(k): float(v) for k, v in town_weights.items()}
+            if isinstance(town_weights, (pd.Series, dict))
+            else dict(town_weights))
+
+    ref = reference_ccr[["sex", "age_band_start", ccr_col]].rename(
+        columns={ccr_col: "ccr_reference"}
+    )
+    out = town_ccr.merge(ref, on=["sex", "age_band_start"], how="left")
+    out["ccr_town"] = out[ccr_col].astype(float)
+    out["shrink_weight"] = out["geoid"].astype(str).map(wmap).fillna(1.0)
+    # Where no reference cell exists, keep town value (weight → 1).
+    has_ref = out["ccr_reference"].notna()
+    shrunk = (
+        out["shrink_weight"] * out["ccr_town"]
+        + (1.0 - out["shrink_weight"]) * out["ccr_reference"]
+    )
+    out[ccr_col] = shrunk.where(has_ref, out["ccr_town"])
+    return out
+
+
+def shrink_cwr_toward_reference(
+    town_cwr: pd.DataFrame,
+    reference_cwr: pd.DataFrame,
+    *,
+    town_weights: pd.Series | dict,
+) -> pd.DataFrame:
+    """Shrink per-town child-woman ratios toward a parent reference CWR.
+
+    Same small-area logic as `shrink_ccrs_toward_reference`, but the CWR
+    is keyed by (geoid, sex) only — there's one 0-4-per-woman-15-49 ratio
+    per sex of child. Small-town ACS samples make the CWR especially
+    noisy (both the 0-4 count and the women-15-49 count have wide MOE,
+    and their ratio compounds it), and the CWR is the births engine of
+    the Hamilton-Perry projection — an inflated town CWR projects
+    sustained above-county fertility forward, driving spurious growth.
+
+    For each (geoid, sex):
+        cwr_shrunk = w_geoid · cwr_town + (1 − w_geoid) · cwr_reference
+
+    Returns a copy of `town_cwr` with `cwr` replaced by the shrunk value
+    and added columns `cwr_town`, `cwr_reference`, `shrink_weight`.
+    """
+    wmap = ({str(k): float(v) for k, v in town_weights.items()}
+            if isinstance(town_weights, (pd.Series, dict))
+            else dict(town_weights))
+
+    ref = reference_cwr[["sex", "cwr"]].rename(columns={"cwr": "cwr_reference"})
+    out = town_cwr.merge(ref, on="sex", how="left")
+    out["cwr_town"] = out["cwr"].astype(float)
+    out["shrink_weight"] = out["geoid"].astype(str).map(wmap).fillna(1.0)
+    has_ref = out["cwr_reference"].notna()
+    shrunk = (
+        out["shrink_weight"] * out["cwr_town"]
+        + (1.0 - out["shrink_weight"]) * out["cwr_reference"]
+    )
+    out["cwr"] = shrunk.where(has_ref, out["cwr_town"])
+    return out

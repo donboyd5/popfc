@@ -334,22 +334,77 @@ when the *net* is small.
   requires either symmetric assumptions or an external data source
   (state-level migration profiles, IRS state-by-age data, etc.).
 
-**Engine extension (deferred to Batch 4b).** A clean implementation
-would estimate per-component age × sex profiles by combining:
+**Engine extension — now implemented (Batch 4b).** The decomposition
+runs as a three-input combination:
 
-- ACS B07001 county-level inflow profiles (age × component-of-origin)
-  for the **domestic vs international shape of inflows**.
-- Demographic-rate assumptions or state-level IRS migration-by-age
-  data for the **outflow age profile** (a known compromise).
-- PEP-published net domestic + net international counts as the
-  per-year levels to match.
+1. **Per-cell `m_total(g, s, a)`** from the residual method
+   (`build_net_migration_rates`, unchanged from Phase 3).
+2. **County-aggregate signed share** from PEP V2025:
+   `p_dom_county(g) = sum_y dom_mig(g, y) / (sum_y dom_mig(g, y) + sum_y int_mig(g, y))`
+   over the most recent 6 years (2019-2024). The "signed" qualifier
+   matters — when a county's two components have opposite signs and
+   the net is small (Essex `+6 = −26 + +32`), p_dom can land far
+   outside [0, 1]. Washington's p_dom is +1.60; Columbia's is +13.74;
+   Suffolk's is −7.84.
+3. **State-aggregate age shape** from ACS B07001 5-year 2019-2023:
+   per age band, `f_dom(a) = (different-county-same-state +
+   different-state) / (...same state + different state + abroad)`.
+   Intra-county moves are excluded (they don't change county-level
+   net migration). For NY-state aggregate, f_dom varies modestly —
+   0.81 at age 5-17 (kids are slightly more often from international
+   families) up to 0.91 at age 18-19 (college moves are
+   overwhelmingly domestic).
 
-The engine would then accept two rate vectors (`net_mig_domestic`
-and `net_mig_international`) plus the existing `net_mig_delta` knob.
-Scenarios could vary one or both independently — e.g., "what if
-domestic out-migration recovered but international stayed at its
-post-COVID elevated level?" That work is genuinely a separate piece
-because of the per-component shape estimation effort.
+The decomposition is exact at the cell level:
+`m_dom(g, s, a) + m_int(g, s, a) = m_total(g, s, a)` always, regardless
+of `p_dom_county` magnitude or sign. The per-cell effective domestic
+factor is:
+
+```
+p_dom_eff(g, a) = p_dom_county(g) + (f_dom(a) - f_dom_mean) × tilt_factor
+m_dom(g, s, a)  = m_total(g, s, a) × p_dom_eff(g, a)
+m_int(g, s, a)  = m_total(g, s, a) × (1 - p_dom_eff(g, a))
+```
+
+with `tilt_factor` defaulting to 1.0 (full age tilt). Setting
+`tilt_factor=0` recovers the simpler degenerate-at-age-level
+decomposition (Tier 1) where every cell uses the same county-level
+share.
+
+**Engine scenarios**. `project_one_county()` accepts the components
+frame and per-component multipliers. Effective rate:
+
+```
+m_eff(s, a) = m_dom(s, a) × dom_mult + m_int(s, a) × int_mult + delta
+```
+
+Baseline invariance: when both multipliers equal 1.0 and `delta=0`,
+the engine output is bit-identical to the legacy single-rate path
+(verified to floating-point precision). Component-mode projections
+get vintage tag `engine_v3_...`; legacy total-mode tags remain
+`engine_v2_...`.
+
+**Stability flag.** Counties with `|p_dom_county| > 5` (8 of 62: Erie,
+Niagara, Richmond, Rockland, Suffolk, Wayne, Westchester, Columbia)
+carry a `p_dom_unstable` note. These counties have components that
+roughly cancel — their net is small relative to component magnitudes,
+so a 50% reduction in one component can flip the sign of their net
+migration. Scenario results for these counties should be interpreted
+carefully.
+
+**Example — Washington 2050 baseline:**
+
+| Scenario | 2050 pop | Δ vs baseline |
+|---|---|---|
+| baseline / comp_baseline | 47,991 | — |
+| comp_low_int (international × 0.5) | 46,710 | −1,281 |
+| comp_low_dom (domestic × 0.5) | 50,674 | +2,683 |
+
+The asymmetry reflects Washington's component pattern: domestic is
+larger in magnitude (-135/yr) and international smaller (+51/yr), so
+the same proportional cut has a bigger absolute effect on domestic.
+The signs are coherent: cutting international inflow shrinks the
+population; cutting domestic out-migration grows it.
 
 ### USALEEP-based county mortality differentials (diagnostic only)
 
@@ -383,14 +438,29 @@ post-COVID period mortality.
   small relative to the migration and fertility scenarios already
   driving the spread.
 
-**Future refinement (queued).** Apply the Washington-vs-NY USALEEP qx
-*ratio* as a multiplicative adjustment to NVSR NY 2022 single-year
-rates. This preserves the period match (2022) while capturing the
-Washington-specific mortality differential. Implementation needs only
-the ratio computation in the loader + an opt-in flag in the engine;
-the tract aggregator already exists.
+**Now implemented as the production schedule for Washington.** The
+queued refinement is live. New helpers `usaleep_qx_band_ratio()` and
+`apply_qx_ratio_to_life_table()` in `popfc.data.nchs` compute the
+per-band Washington/NY qx ratio and apply it as a multiplicative
+adjustment to NVSR NY 2022 single-year qx. Period match preserved
+(NVSR 2022, contemporaneous with the forecast base 2024); Washington
+mortality differential captured.
 
-### Town forecast v2 — multi-vintage CCRs + IPF (current default)
+Notebook 06 §6c builds the Washington-adjusted schedule and writes
+both `data_interim/survival_rates.parquet` (geoid `36115` added
+alongside `36000`) and `data_interim/life_tables.parquet` (so
+Notebook 08's recompute path discovers the new rows). Notebook 08
+uses `survival_geoid="36115"` for Washington and `"36000"` (NY state)
+for the other 5 cohort counties.
+
+Forecast impact: Washington 2050 baseline rose **47,567 → 47,990**
+(+423 residents), right in the predicted +200-500 range. e(0) under
+the adjusted schedule is 80.11 vs the NVSR NY 2022 baseline of 79.53
+(+0.58 years — less than the raw +1.17 USALEEP differential because
+per-band ratios mix in both directions; some bands favor Washington
+and some don't).
+
+### Town forecast v3 — base rescaling + CCR/CWR shrinkage (current default)
 
 The first iteration of the town forecast (Batch 4 of the original
 project, pre-review) used Hamilton-Perry with **two ACS vintages**
@@ -428,13 +498,58 @@ The **v2 default** (Batch 6 of the review) addresses both:
   biproportional fitting iteratively. Useful for future scenarios
   where we want town totals AND county pyramid simultaneously.
 
-For Washington's MCDs, v2 corrects the most extreme v1 outliers
-(Hampton +188% → −9.4%) and surfaces real growers v1 missed
-(Whitehall +35%). The county total is unchanged by construction.
+For Washington's MCDs, v2 corrected the most extreme v1 outliers
+(Hampton +188% → −9.4%) and the county total is unchanged by
+construction. But the Notebook-12 audit found v2 still had three
+problems, which **v3** (current default) fixes:
 
-The v1 method is computed alongside v2 in Notebook 09 §4b for direct
-comparison; only v2 is saved to `data_interim/town_forecasts.parquet`
-and consumed downstream.
+**v3 fix 1 — PEP base-year rescaling** (`rescale_base_to_target`).
+v2 fed the raw ACS 2020-2024 midpoint pyramid as the base. For small
+towns the ACS total disagrees materially with the authoritative PEP
+sub-est total (Hampton ACS 1,145 vs PEP 858 = +33%; Hartford −13%).
+Since HP projects forward from the base, a wrong base level
+propagates into every forecast year. v3 scales each town's pyramid by
+a single factor so its total matches PEP sub-est 2022 — preserving
+the ACS pyramid *shape* while fixing the *level*.
+
+**v3 fix 2 — CCR shrinkage toward county**
+(`shrink_ccrs_toward_reference`). All 17 towns have median CCR
+coefficient of variation > 0.20 across the 10 vintage pairs (Putnam,
+Dresden, White Creek exceed 0.50). v3 shrinks each town CCR toward
+the county-aggregate CCR (built from the *same* ACS town history via
+`aggregate_history_to_parent`, so it's directly comparable) with
+weight `w = P / (P + 2000)`. A 2,000-person town weights its own CCR
+and the county reference equally; smaller towns lean county.
+
+**v3 fix 3 — CWR shrinkage toward county**
+(`shrink_cwr_toward_reference`). The child-woman ratio is HP's births
+engine and the noisiest town input (both 0-4 and women-15-49 are
+small ACS counts). Whitehall's CWR was ~0.42 vs the county's ~0.24 —
+that single inflated ratio was the main driver of its spurious
+growth. v3 shrinks the CWR toward the county reference with the same
+weights.
+
+**Net effect on the audit's headline case**: Whitehall's baseline
+2022→2047 projection drops from **+36% (v2) → +21.7% (v3)** — no
+longer a wild outlier (it had been *flat* for 15 years of observed
+history), now within the spread of the other towns, while keeping 2/3
+of its own demographic signal (w = 0.67 at pop 4,005). Hampton and
+Hartford project from PEP-correct bases. County total still exact via
+IPF.
+
+Notebook 09 §4b shows the v2 → v3 before/after directly; the v1
+single-vintage + pro-rata method and the legacy CCR cap are retained
+later as sensitivity checks. Only v3 is saved to
+`data_interim/town_forecasts.parquet` and consumed downstream.
+
+**Honest caveat.** v3 reduces the *symptoms* of small-area ACS
+sampling noise (shrinkage) and fixes a base-level bug (rescaling),
+but the underlying constraint remains: town-scale demographic
+projection from 5-year ACS samples of 500-13,000-person populations
+is inherently uncertain. v3 town forecasts are more defensible than
+v2, not authoritative. The remaining structural improvement
+(Notebook-12 recommendation #2 — extend IPF to county age × sex row
+marginals, not just totals) is deferred.
 
 ### Hamilton-Perry
 
@@ -508,6 +623,7 @@ For full coverage details see `docs/data_dictionary.md`. Briefly:
 | CDC Bridged-Race | County single-year-of-age × sex × race × year, 1990-2020 | Discontinued | Washington pre-2020 age × sex history |
 | NCHS NVSR | National + state life tables | Annual NVSR issues | Survival rates (current: US 2023, NY 2022) |
 | NCHS USALEEP | Tract life expectancy 2010-2015 | Static (not refreshed) | Quality check: Washington tracts vs NY state median e(0) |
+| NYSDOH Vital | County births by mother's age (2008+); county deaths by age group (2003+); Socrata API | Annual, lagging (births ~6mo, deaths ~24mo) | Cross-source audit vs PEP births/deaths in Notebook 02 — surfaces PEP coverage gaps (e.g., V2020 partial-year transition rows) |
 | ACS 5-year | Detailed county + MCD tables | Annual (current: 2020-2024) | Town age × sex (HP base); migration profiles (B07001, B06001) |
 | Cornell PAD | NY county projections (pre-pandemic) | Static | Benchmark for the engine's county forecasts |
 
@@ -561,6 +677,30 @@ This is a deliberate **first-pass approximation**:
 NYSDOH publishes vital statistics at sub-county geography in some
 forms; pulling those (deferred — see GitHub issue #2) would replace
 this allocator with direct measurement for births and deaths.
+
+### Reproducibility — MANIFEST.toml + inline foundational data
+
+The project's raw inputs are ~470 MB and most come from URLs (Census,
+NCHS, IRS, etc.). URLs rot. The reproducibility approach:
+
+- **`data_raw/MANIFEST.toml`** — generated by
+  `scripts/build_manifest.py`. Records for every file under `data_raw/`:
+  relative path, SHA-256 hash, size in bytes, mtime, and the source URL
+  / download-spec name when registered in `popfc.data.download`.
+  102 files, ~470 MB indexed. Committed to the repo. Re-run after any
+  data refresh.
+- **Small foundational sources are committed inline** (~10 MB total):
+  `data_raw/cdc/`, `data_raw/cornell/`, `data_raw/nchs/`,
+  `data_raw/nysdol/`. These are the static or near-static reference
+  inputs — CDC Bridged-Race is discontinued, NCHS NVSR life tables are
+  fixed annual publications, Cornell PAD is a one-time benchmark,
+  NYSDOL CSVs are small Socrata pulls. If their URLs vanish, the
+  project still builds.
+- **Heavy sources stay ignored** (`acs/` ~150 MB JSON cache, `census/`
+  ~200 MB archives, `irs/` ~66 MB, `nysdoh/` ~26 MB). All refreshable
+  via `python -m popfc.data.download` (or by manual placement for
+  archived Census files). The MANIFEST records their hashes so version
+  drift is detectable even when the files themselves aren't checked in.
 
 ### Engineering conventions (also see CLAUDE.md)
 

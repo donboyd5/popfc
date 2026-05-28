@@ -11,7 +11,330 @@ the substantive changes. Entries are newest first.
 
 ---
 
-## 2026-05-26 — `feat/mortality-usaleep` (in progress)
+## 2026-05-28 — `feat/town-forecast-v3` (in progress)
+
+Implements Notebook-12 audit recommendations #1 and #3 — the town
+forecasts the user flagged as untrustworthy now start from
+PEP-correct bases and have their noisiest small-area inputs shrunk
+toward stable county references.
+
+**New `popfc.models.hamilton_perry` functions:**
+
+- `rescale_base_to_target()` — proportionally scale each town's ACS
+  base pyramid so its total matches PEP sub-est 2022 (fixes Hampton
+  +33%, Hartford −13% base-year errors). Clips runaway factors and warns.
+- `aggregate_history_to_parent()` — build a county-aggregate CCR/CWR
+  reference from the same ACS town history (apples-to-apples comparison).
+- `population_shrinkage_weights()` — `w = P / (P + k)`, k = 2,000.
+- `shrink_ccrs_toward_reference()` / `shrink_cwr_toward_reference()` —
+  small-area shrinkage: `x_shrunk = w·x_town + (1−w)·x_reference`.
+
+**Notebook 09**: §1b (PEP base rescale) + §2b (CCR + CWR shrinkage)
+feed the v3 production path. §4b rewritten to show v2 → v3 before/after.
+The notebook intro + method section updated to describe v3.
+
+**Impact (Washington baseline, 2022 → 2047):**
+
+| Town | v2 | v3 | Why |
+|---|---|---|---|
+| Whitehall | +36% | **+21.7%** | CCR + CWR shrinkage (its CWR was 0.42 vs county 0.24) |
+| Hampton | (base +33% off) | base → PEP 858 | PEP rescale |
+| Hartford | (base −13% off) | base → PEP 2,179 | PEP rescale |
+
+Whitehall had been *flat* for 15 years of observed history, so v2's
++36% was unsupported; v3 pulls it into the believable range while
+keeping 2/3 of its own signal (w = 0.67 at pop 4,005). County total
+unchanged — IPF still exact (town sum = county forecast).
+
+**16 new tests** (`tests/test_hamilton_perry_v3.py`): rescaling
+(scale-to-target, shape preservation, clip+warn, passthrough),
+history aggregation, shrinkage-weight formula, CCR/CWR shrinkage
+(w=0/0.5/1 blends, missing-reference passthrough, small-town pulled
+harder). **207 total tests pass.**
+
+Notebook 12 left as the v2-era audit snapshot (it's not in
+`make run-all`, which covers 01-10 only; its findings motivated this
+branch and the v2→v3 story lives in Notebook 09 §4b).
+
+**Deferred**: Notebook-12 recommendation #2 (extend IPF to county
+age × sex row marginals, not just totals) — the remaining structural
+improvement for town forecasts.
+
+---
+
+## 2026-05-27 — `feat/town-forecast-audit` (in progress)
+
+Read-only diagnostic notebook (`notebooks/12_town_forecast_audit.ipynb`)
+that surfaces what specifically is unreliable about the
+Hamilton-Perry town forecasts and what would help. The user flagged
+after Batch 6 that "town forecasts can't be trusted yet" — this
+audit makes that concrete.
+
+**What's working** (verified by the audit):
+
+- IPF column constraint: town sums match county forecast to 0.0%
+  across every (year, scenario) — floating-point precision.
+- Multi-vintage CCR averaging (Batch 6) significantly tamed the
+  worst v1 wildness (Hampton +188% → -9.4%).
+
+**What the audit shows is broken:**
+
+- **Whitehall's +36% baseline forecast is unsupported by history.**
+  PEP/ACS show Whitehall stable at ~4,000 for 15+ years (3,953-4,046
+  observed range). The forecast extrapolates +1.23%/yr out of an
+  observed +0.03%/yr. A large 30-34 cohort in the ACS 2018-2022
+  pyramid drives cohort-aging math; almost certainly an ACS
+  sampling artifact, not a demographic regime change.
+- **Hampton's 2022 ACS base is 33% above PEP** (ACS 1,145 vs PEP
+  858). Hartford is -13% off. The engine feeds raw ACS midpoints
+  to Hamilton-Perry, so these towns project from a wrong base.
+- **All 17 towns have median CCR coefficient of variation > 0.20
+  across the 10 vintage pairs.** Three exceed 0.50 (Putnam, Dresden,
+  White Creek) — small-town ACS sampling noise dominates signal.
+
+**Recommended next steps** (ranked by payoff in the notebook's §7):
+
+1. Rescale engine base year to PEP sub-est totals (small, removes
+   Hampton/Hartford base-year errors).
+2. Extend IPF to constrain county age × sex marginals, not just
+   totals (mid-effort; addresses Whitehall-style cohort-aging
+   artifacts).
+3. Bayesian shrinkage of town CCRs toward county CCRs (small-area
+   estimation method; reduces variance from sampling noise).
+4. NYSDOH sub-county vital statistics — not currently published
+   by NYSDOH at MCD level, so not actionable without a new source.
+
+No code changes, no production forecasts altered. The notebook
+formalizes the "we can't trust these yet" claim into specific
+quantitative findings.
+
+---
+
+## 2026-05-27 — `feat/nysdoh-vital-county` (in progress)
+
+Closes [issue #2](https://github.com/donboyd5/popfc/issues/2). Pulls
+NYSDOH vital statistics (births + deaths) via Socrata, adds a
+cross-source audit panel to Notebook 02, and extends
+`county_components.parquet` with `source='nysdoh_vital'` rows.
+
+**New code** in `popfc.data.nysdoh_vital`:
+
+- `load_nysdoh_births()` — pulls `i7yg-w5rg` (Live Births by Mother's
+  Age and Resident County, 2008+). Returns `totals` (county-year
+  totals in `COMPONENTS_LONG_COLUMNS`) and `by_mother_age` (full
+  detail). Uses the API's published `Total` row, not summed detail.
+- `load_nysdoh_deaths()` — pulls `xit9-mprv` (Deaths by Resident
+  County, Region, Age-Group, 2003+). Same shape.
+- Caches raw API responses under `data_raw/nysdoh/api/` keyed by
+  the dataset's data-publication date (from Socrata `rowsUpdatedAt`).
+  UTC date used for cross-machine determinism.
+- Vintage tag format: `nysdoh_vital_YYYYMMDD`.
+- Supports `NYSDOH_SOCRATA_APP_TOKEN` env var for higher rate limits
+  (anonymous queries also work — datasets are small enough).
+
+**Notebook 02 §4c** — cross-source audit comparing NYSDOH vs PEP
+births and deaths for every county-year intersection. Reports
+distribution of % differences, scatter (1:1 line + cohort highlight),
+and Washington time-series side-by-side. Section §5 now saves the
+combined PEP + NYSDOH frame to `county_components.parquet`
+(14,742 PEP rows + 2,170 NYSDOH rows = 16,912 total).
+
+**Headline finding**: PEP's 2020 county births/deaths rows are
+**fragmentary base-year transition values**, not full-year counts.
+Washington 2020:
+
+| Source | 2020 births | 2020 deaths |
+|---|---|---|
+| PEP | 142 | 164 |
+| NYSDOH | 532 | 765 |
+
+Pre-2020 and post-2021 the two sources agree to ±5%. The 2020 gap
+was previously invisible because PEP was self-checking. Downstream
+code that uses `births` and `deaths` from `comp_pep_res` should
+treat 2020 as a data gap.
+
+**Notebook 11** updated to filter to `source='census_pep'` in its
+town-level component allocator, so the new NYSDOH rows don't
+double-count through the population-share merge.
+
+**QA invariants** updated: uniqueness now keyed on
+`(geoid, year, measure, source)` to allow the deliberate dual-source
+coverage. The original PEP-only uniqueness invariant is checked
+separately.
+
+**9 new tests** for the Socrata fetch + parse, cache round-trip,
+vintage formatting, aggregate-row handling, and a live-data smoke
+check that runs when a prior cache is present. **191 total tests pass.**
+Forecasts unchanged at baseline.
+
+---
+
+## 2026-05-27 — `feat/migration-decomposition-engine` (in progress)
+
+Batch 4b: closes the queued "biggest remaining piece" by decomposing
+each per-cell net migration rate into domestic + international
+components and extending the cohort-component engine to accept separate
+per-component scenario knobs.
+
+**Data integration**:
+
+- **PEP V2025** publishes county-year `domestic_mig` and
+  `international_mig` separately — these provide the county-level
+  *signed* domestic share `p_dom_county = sum(dom) / (sum(dom) + sum(int))`
+  averaged over 2019-2024. The factor is *signed* (can fall outside
+  [0, 1] when components offset each other — e.g., Washington's
+  `p_dom = +1.60`, Essex's `-3.92`, Columbia's `+13.74`).
+- **ACS B07001** (Geographical Mobility by Age, 5-year 2019-2023) pulled
+  via the existing ACS infrastructure. State-aggregate `f_dom(age)`
+  varies modestly (0.81 at age 5-17 → 0.91 at age 18-19, with most
+  ages 0.83-0.87), providing a mild age tilt to the per-cell
+  decomposition.
+
+**New code** in `popfc.models.migration`:
+
+- `b07001_age_component_shape(b07001_long, state_filter=...)` — parses
+  the 96-variable B07001 long frame and returns a per-band
+  domestic / international / f_dom DataFrame.
+- `expand_age_shape_to_single_year(shape_band, top_code_age=85)` —
+  expands band-level shape to single-year ages (uniform within band).
+- `decompose_net_migration(net_mig, pep_components, age_shape_single_year=None, ...)`
+  — produces a NET_MIGRATION_COMPONENTS frame: per (geoid, sex, age)
+  cell with `m_total_rate`, `m_dom_rate`, `m_int_rate`,
+  `p_dom_county`, `p_dom_age_effective`. Cell-sum identity
+  `m_dom + m_int = m_total` is exact (drift < 1e-12).
+- Counties with `|p_dom_county| > 5` (8 counties — Columbia, Erie,
+  Niagara, Richmond, Rockland, Suffolk, Wayne, Westchester) are
+  annotated as **`p_dom_unstable`** because their components offset
+  each other near zero net — component multiplier scenarios produce
+  outsized swings in those counties and the flag warns downstream
+  users.
+
+**Engine extension** in `popfc.models.cohort_component`:
+
+- `project_one_county()` gains three new keyword args:
+  `net_mig_components`, `net_mig_dom_multiplier`, `net_mig_int_multiplier`.
+- Effective rate (component mode):
+  `m_eff = m_dom × dom_mult + m_int × int_mult + delta`.
+- **Baseline invariance**: with all multipliers = 1.0 and
+  `m_dom + m_int = m_total`, the projection is bit-identical to
+  total mode (verified to 1e-9 across all years/sexes/ages).
+- The auto-generated `projection_vintage` tag now distinguishes
+  `engine_v3_...` (component mode) from `engine_v2_...` (total mode).
+
+**Notebook 07 §7** — new decomposition section: pulls B07001, computes
+state-aggregate shape, decomposes statewide, plots f_dom by age band,
+plots per-county p_dom distribution (highlighting unstable counties),
+plots Washington's m_dom vs m_int by age, and saves
+`net_migration_components.parquet` (10,540 rows × 17 cols).
+
+**Notebook 08 §5c** — new component scenarios section runs three
+component scenarios alongside the historical-reference framework:
+`comp_baseline`, `comp_low_int` (international × 0.5),
+`comp_low_dom` (domestic × 0.5). Saves
+`county_forecasts_components.parquet`.
+
+**Component scenario impact, Washington 2050**:
+
+| Scenario | 2050 pop | Δ vs comp_baseline |
+|---|---|---|
+| comp_baseline (= regular baseline) | 47,991 | base |
+| comp_low_int | 46,710 | −1,281 |
+| comp_low_dom | 50,674 | +2,683 |
+
+Washington's two components are signed-opposite: domestic is net
+out (-135/yr), international is net in (+51/yr). Halving
+international amplifies the net out-migration → smaller pop.
+Halving domestic out-migration → larger pop. The asymmetry
+(low_dom Δ > |low_int Δ|) reflects domestic's larger absolute size.
+
+**15 new tests** across `tests/test_migration.py` (B07001 shape
+parser, age-band expansion, decomposition cell-sum identity,
+opposite-sign components, instability flag, age-tilt zero-factor
+matches Tier 1) and `tests/test_cohort_component.py` (baseline
+invariance, scenario directionality, delta still applied,
+vintage tag distinguishes modes). **182 total tests pass.**
+
+---
+
+## 2026-05-26 — `feat/mortality-usaleep-ratio` (in progress)
+
+Post-review follow-up #2: closes the Batch 7 "queued refinement" by
+turning the USALEEP qx-ratio adjustment into the production mortality
+schedule for Washington. Other 5 cohort counties continue on NY state
+NVSR.
+
+**New code** in `popfc.data.nchs`:
+
+- `usaleep_qx_band_ratio(target, reference)` — per-band qx ratio
+  between two USALEEP-aggregate life tables.
+- `apply_qx_ratio_to_life_table(nvsr_table, qx_ratios, ...)` —
+  rebuild an NVSR-style single-year life table with adjusted qx,
+  reconstructed lx/Lx/Tx/ex. Output schema-conforming; vintage gains
+  a `_usaleep_adj` suffix.
+
+**Notebook 06 §6c**: builds Washington-adjusted schedule and adds
+geoid `36115` rows to both `survival_rates.parquet` and
+`life_tables.parquet`.
+
+**Notebook 08**: `survival_geoid="36115" if geoid==WASHINGTON else
+"36000"` — Washington uses the adjusted schedule, others use NY
+state as before.
+
+**Headline forecast impact** (baseline scenario):
+
+| Year | Pre-adjustment | Post-adjustment | Delta |
+|---|---|---|---|
+| 2024 | 59,839 | 59,839 | 0 (base year) |
+| 2030 | 57,722 | 57,910 | +188 |
+| 2040 | 52,979 | 53,361 | +382 |
+| 2050 | 47,567 | **47,990** | **+423** |
+
+Right in the +200-500 range predicted in Batch 7. e(0) under the
+adjusted schedule is **80.11** vs NVSR NY 2022 baseline **79.53**
+(+0.58 years).
+
+**6 new tests** for the qx-ratio helpers (happy path, error paths,
+ratio identity, qx clipping at 1.0). 2 existing test assertions
+updated to tolerate the new 36115 slices in life_tables.parquet.
+**167 total tests pass.**
+
+---
+
+## 2026-05-26 — `feat/data-archival` (merged to main)
+
+Post-review follow-up #1: reproducibility infrastructure. Closes the
+loop on a concern surfaced during the V2025 refresh (Census reorganizes
+URLs every few years; NYSDOH/IRS data can get withdrawn).
+
+**Code:**
+
+- **`scripts/build_manifest.py`** — generator that walks `data_raw/`,
+  computes SHA-256 + size + mtime per file, looks up source URLs in
+  the existing `popfc.data.download` registry, and writes
+  `data_raw/MANIFEST.toml`. ~120 lines, no external deps beyond what
+  the project already has.
+- **`data_raw/MANIFEST.toml`** — generated. 102 files indexed,
+  ~470 MB total. Committed.
+- **Inline-commit of ~10 MB foundational sources**: `data_raw/cdc/`,
+  `data_raw/cornell/`, `data_raw/nchs/`, `data_raw/nysdol/`. These
+  are the static or near-static reference inputs (CDC Bridged-Race
+  discontinued; NCHS NVSR life tables fixed-annual; Cornell PAD
+  one-time; NYSDOL Socrata pulls small). Project now reproduces from
+  a fresh clone even if all upstream URLs vanish.
+- **`.gitignore`** updated to selectively re-include the small subdirs
+  + MANIFEST.toml while keeping the heavy ones (acs ~150 MB,
+  census ~200 MB, irs ~66 MB, nysdoh ~26 MB) ignored.
+
+**Open follow-ups remaining after this:**
+
+- USALEEP qx-ratio adjustment to NVSR (Batch 7 finding)
+- Migration engine extension (Batch 4b — domestic + international as
+  separate engine inputs)
+- NYSDOH sub-county vital statistics pulls (issue #2)
+
+---
+
+## 2026-05-26 — `feat/mortality-usaleep` (merged to main `a8bdff9`)
 
 Batch 7 of the review (the last in the originally-planned set):
 USALEEP-based mortality diagnostic for Washington.

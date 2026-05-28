@@ -460,7 +460,7 @@ the adjusted schedule is 80.11 vs the NVSR NY 2022 baseline of 79.53
 per-band ratios mix in both directions; some bands favor Washington
 and some don't).
 
-### Town forecast v2 — multi-vintage CCRs + IPF (current default)
+### Town forecast v3 — base rescaling + CCR/CWR shrinkage (current default)
 
 The first iteration of the town forecast (Batch 4 of the original
 project, pre-review) used Hamilton-Perry with **two ACS vintages**
@@ -498,13 +498,58 @@ The **v2 default** (Batch 6 of the review) addresses both:
   biproportional fitting iteratively. Useful for future scenarios
   where we want town totals AND county pyramid simultaneously.
 
-For Washington's MCDs, v2 corrects the most extreme v1 outliers
-(Hampton +188% → −9.4%) and surfaces real growers v1 missed
-(Whitehall +35%). The county total is unchanged by construction.
+For Washington's MCDs, v2 corrected the most extreme v1 outliers
+(Hampton +188% → −9.4%) and the county total is unchanged by
+construction. But the Notebook-12 audit found v2 still had three
+problems, which **v3** (current default) fixes:
 
-The v1 method is computed alongside v2 in Notebook 09 §4b for direct
-comparison; only v2 is saved to `data_interim/town_forecasts.parquet`
-and consumed downstream.
+**v3 fix 1 — PEP base-year rescaling** (`rescale_base_to_target`).
+v2 fed the raw ACS 2020-2024 midpoint pyramid as the base. For small
+towns the ACS total disagrees materially with the authoritative PEP
+sub-est total (Hampton ACS 1,145 vs PEP 858 = +33%; Hartford −13%).
+Since HP projects forward from the base, a wrong base level
+propagates into every forecast year. v3 scales each town's pyramid by
+a single factor so its total matches PEP sub-est 2022 — preserving
+the ACS pyramid *shape* while fixing the *level*.
+
+**v3 fix 2 — CCR shrinkage toward county**
+(`shrink_ccrs_toward_reference`). All 17 towns have median CCR
+coefficient of variation > 0.20 across the 10 vintage pairs (Putnam,
+Dresden, White Creek exceed 0.50). v3 shrinks each town CCR toward
+the county-aggregate CCR (built from the *same* ACS town history via
+`aggregate_history_to_parent`, so it's directly comparable) with
+weight `w = P / (P + 2000)`. A 2,000-person town weights its own CCR
+and the county reference equally; smaller towns lean county.
+
+**v3 fix 3 — CWR shrinkage toward county**
+(`shrink_cwr_toward_reference`). The child-woman ratio is HP's births
+engine and the noisiest town input (both 0-4 and women-15-49 are
+small ACS counts). Whitehall's CWR was ~0.42 vs the county's ~0.24 —
+that single inflated ratio was the main driver of its spurious
+growth. v3 shrinks the CWR toward the county reference with the same
+weights.
+
+**Net effect on the audit's headline case**: Whitehall's baseline
+2022→2047 projection drops from **+36% (v2) → +21.7% (v3)** — no
+longer a wild outlier (it had been *flat* for 15 years of observed
+history), now within the spread of the other towns, while keeping 2/3
+of its own demographic signal (w = 0.67 at pop 4,005). Hampton and
+Hartford project from PEP-correct bases. County total still exact via
+IPF.
+
+Notebook 09 §4b shows the v2 → v3 before/after directly; the v1
+single-vintage + pro-rata method and the legacy CCR cap are retained
+later as sensitivity checks. Only v3 is saved to
+`data_interim/town_forecasts.parquet` and consumed downstream.
+
+**Honest caveat.** v3 reduces the *symptoms* of small-area ACS
+sampling noise (shrinkage) and fixes a base-level bug (rescaling),
+but the underlying constraint remains: town-scale demographic
+projection from 5-year ACS samples of 500-13,000-person populations
+is inherently uncertain. v3 town forecasts are more defensible than
+v2, not authoritative. The remaining structural improvement
+(Notebook-12 recommendation #2 — extend IPF to county age × sex row
+marginals, not just totals) is deferred.
 
 ### Hamilton-Perry
 

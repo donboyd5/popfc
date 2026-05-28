@@ -11,6 +11,57 @@ the substantive changes. Entries are newest first.
 
 ---
 
+## 2026-05-28 — `feat/town-forecast-v3` (in progress)
+
+Implements Notebook-12 audit recommendations #1 and #3 — the town
+forecasts the user flagged as untrustworthy now start from
+PEP-correct bases and have their noisiest small-area inputs shrunk
+toward stable county references.
+
+**New `popfc.models.hamilton_perry` functions:**
+
+- `rescale_base_to_target()` — proportionally scale each town's ACS
+  base pyramid so its total matches PEP sub-est 2022 (fixes Hampton
+  +33%, Hartford −13% base-year errors). Clips runaway factors and warns.
+- `aggregate_history_to_parent()` — build a county-aggregate CCR/CWR
+  reference from the same ACS town history (apples-to-apples comparison).
+- `population_shrinkage_weights()` — `w = P / (P + k)`, k = 2,000.
+- `shrink_ccrs_toward_reference()` / `shrink_cwr_toward_reference()` —
+  small-area shrinkage: `x_shrunk = w·x_town + (1−w)·x_reference`.
+
+**Notebook 09**: §1b (PEP base rescale) + §2b (CCR + CWR shrinkage)
+feed the v3 production path. §4b rewritten to show v2 → v3 before/after.
+The notebook intro + method section updated to describe v3.
+
+**Impact (Washington baseline, 2022 → 2047):**
+
+| Town | v2 | v3 | Why |
+|---|---|---|---|
+| Whitehall | +36% | **+21.7%** | CCR + CWR shrinkage (its CWR was 0.42 vs county 0.24) |
+| Hampton | (base +33% off) | base → PEP 858 | PEP rescale |
+| Hartford | (base −13% off) | base → PEP 2,179 | PEP rescale |
+
+Whitehall had been *flat* for 15 years of observed history, so v2's
++36% was unsupported; v3 pulls it into the believable range while
+keeping 2/3 of its own signal (w = 0.67 at pop 4,005). County total
+unchanged — IPF still exact (town sum = county forecast).
+
+**16 new tests** (`tests/test_hamilton_perry_v3.py`): rescaling
+(scale-to-target, shape preservation, clip+warn, passthrough),
+history aggregation, shrinkage-weight formula, CCR/CWR shrinkage
+(w=0/0.5/1 blends, missing-reference passthrough, small-town pulled
+harder). **207 total tests pass.**
+
+Notebook 12 left as the v2-era audit snapshot (it's not in
+`make run-all`, which covers 01-10 only; its findings motivated this
+branch and the v2→v3 story lives in Notebook 09 §4b).
+
+**Deferred**: Notebook-12 recommendation #2 (extend IPF to county
+age × sex row marginals, not just totals) — the remaining structural
+improvement for town forecasts.
+
+---
+
 ## 2026-05-27 — `feat/town-forecast-audit` (in progress)
 
 Read-only diagnostic notebook (`notebooks/12_town_forecast_audit.ipynb`)

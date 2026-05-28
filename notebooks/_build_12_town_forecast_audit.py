@@ -55,6 +55,16 @@ The audit doesn't change any production code or forecasts — it's
 read-only diagnostics that inform whether to invest in a deeper
 data improvement (e.g., NYSDOH sub-county vital stats) or in a
 methodology change (e.g., wider CCR window, different cohort scheme).
+
+> **Status note (added after this audit ran).** This audit was run
+> against the **v2** town forecasts (Batch 6: multi-vintage CCRs +
+> IPF). It motivated `feat/town-forecast-v3`, which implemented
+> recommendations **#1** (PEP base rescaling) and **#3** (CCR + CWR
+> shrinkage) — Whitehall's headline +36% dropped to +21.7%.
+> Recommendation **#2** was found to be **already satisfied** (the
+> original wording was wrong — see the correction in §7). The figures
+> in the cells below are preserved as the v2-era "before" snapshot;
+> the v2→v3 before/after lives in Notebook 09 §4b and the changelog.
 """),
     # ---------------------------------------------------------------
     code("""
@@ -537,27 +547,39 @@ for _, r in highest_cv.iterrows():
 
 ## Recommended next steps, in rough order of payoff
 
-1. **Reconcile the engine base year to PEP.** Right now the engine
-   feeds the raw ACS 5-year midpoint into Hamilton-Perry as the
+> **Update (post-v3):** #1 and #3 were implemented in
+> `feat/town-forecast-v3`; #2 was found already-satisfied (corrected
+> below); #4 remains not-actionable.
+
+1. **[DONE in v3] Reconcile the engine base year to PEP.** The engine
+   was feeding the raw ACS 5-year midpoint into Hamilton-Perry as the
    2022 base. For towns like Hampton (+33%) and Hartford (-13%),
-   this base disagrees materially with the authoritative PEP total.
-   A simple proportional rescaling of each town's age × sex matrix
-   to match the PEP sub-est 2022 total would eliminate this
-   category of error without changing the projection method.
-2. **Apply the IPF row constraint, not just column.** The current
-   IPF column-only constraint matches county totals but not
-   county age × sex marginals. With row marginals — feasible from
-   PEP V2025 county SYA + Census SYA — the per-cell town
-   projections would also have to fit the county shape, which
-   would mute the bigger ACS sampling artifacts at the cohort
-   level. Bigger effort than #1 but addresses the Whitehall-style
-   cohort-aging quirks.
-3. **Bayesian shrinkage of town CCRs toward the county CCR.**
-   For age × sex cells with CCR_CV > 0.40, treat the town CCR
-   as a noisy estimate and shrink it toward the (much more
-   stable) county-level CCR. This is the standard small-area
-   estimation move. Reduces forecast variance at small cost in
-   forecast accuracy for towns that genuinely do diverge.
+   this base disagreed materially with the authoritative PEP total.
+   v3 proportionally rescales each town's age × sex matrix to match
+   the PEP sub-est 2022 total (`rescale_base_to_target`) — fixing the
+   level without changing the projection method.
+2. **[ALREADY SATISFIED — original wording was wrong.]** The original
+   text claimed "the column-only IPF matches county totals but not
+   county age × sex marginals." That is backwards. The column-only
+   IPF's `column_targets` **are** the county (sex, age band) pyramid,
+   so the cross-town sum already matches the county age × sex
+   marginals **exactly** (verified: 0.0 difference across all
+   scenarios and forecast years). What it does *not* constrain is
+   each town's **total** (the row marginal), which emerges from the
+   HP cohort-change ratios. Anchoring town totals would need an
+   independent town-total forecast (e.g., a trend on the 6-year PEP
+   sub-est town-total series) as the row target, then biproportional
+   IPF to satisfy town totals AND the county pyramid at once.
+   Uncertain payoff — it swaps one noisy town-total estimate (HP
+   CCRs) for another (a short PEP trend), with no clearly-better data
+   source. Deferred pending evidence it beats v3.
+3. **[DONE in v3] Shrinkage of town CCRs toward the county CCR.**
+   v3 shrinks each town's CCRs — and, crucially, its child-woman
+   ratio — toward the county-aggregate reference with weight
+   `w = P / (P + 2000)` (`shrink_ccrs_toward_reference`,
+   `shrink_cwr_toward_reference`). The CWR shrinkage was the key
+   piece: Whitehall's CWR of ~0.42 (vs county ~0.24) was the main
+   driver of its spurious growth.
 4. **NYSDOH sub-county vital statistics would help — at the
    births side.** NYSDOH publishes births by resident county
    (and now we use that — see issue #2). Town-level vital events

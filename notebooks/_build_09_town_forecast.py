@@ -26,23 +26,29 @@ to 2047 via Hamilton-Perry, then constrain town totals to the county
 forecast from Notebook 08 — for each of the three scenarios (low,
 baseline, high).
 
-## Method: Hamilton-Perry + pro-rata constraint
+## Method: Hamilton-Perry, v3 production
 
-1. **Cohort change ratios** (CCRs) computed per town from two ACS
-   5-year vintages 5 years apart: 2015-2019 (midpoint ~2017) and
-   2020-2024 (midpoint ~2022).
-2. **Child-to-woman ratios** (CWRs) at the 2022 midpoint, held
-   constant.
-3. **Project** each town in 5-year steps: 2022 → 2027 → 2032 → ... →
-   2047.
-4. **Pro-rata constraint**: at each forecast year, sum the
-   unconstrained town projections and scale each by
-   `(county forecast total) / (sum of town projections)` so the
-   towns add up to the parent county under each scenario.
+The production method has evolved through three versions; v3 (this
+notebook's default) incorporates the Notebook-12 audit follow-ups:
 
-The constraint is applied uniformly across all age × sex cells in each
-town — it preserves the within-town age structure (which is the
-informative part of Hamilton-Perry) and only adjusts the level.
+1. **Base population** = ACS 2020-2024 5-year pyramid, **rescaled so
+   each town total matches PEP sub-est 2022** (§1b). Fixes small-town
+   ACS/PEP base-level disagreements (Hampton was +33%, Hartford -13%).
+2. **Cohort change ratios** (CCRs) averaged across **10 5-year ACS
+   vintage pairs** (Batch 6), then **shrunk toward the county-aggregate
+   CCR** with weight `w = P / (P + 2000)` (§2b). Small towns lean on
+   the stable county signal; large towns keep their own.
+3. **Child-woman ratios** (CWRs) at 2022, likewise **shrunk toward the
+   county CWR** — the CWR is the births engine and the noisiest
+   town-level input (Whitehall's was ~0.42 vs the county's ~0.24).
+4. **Project** each town in 5-year steps 2022 → 2047.
+5. **IPF column constraint**: at each forecast year, scale towns per
+   (sex, age band) so the cross-town sum matches the Notebook-08 county
+   forecast pyramid for that scenario. Preserves within-town age
+   structure; matches the county marginals exactly.
+
+§4b shows the v2 → v3 before/after. The v1 single-vintage + pro-rata
+method and the legacy CCR-cap are retained later as sensitivity checks.
 
 ## Why Hamilton-Perry vs full cohort-component?
 
@@ -77,9 +83,14 @@ from popfc.data.acs import GEO_COUNTY_SUBDIVISION, load_acs5_group
 from popfc.models.hamilton_perry import (
     HP_PROJECTION_COLUMNS,
     aggregate_b01001_to_5yr_bands,
+    aggregate_history_to_parent,
     child_woman_ratios,
     cohort_change_ratios,
+    population_shrinkage_weights,
     project_one_county_hp,
+    rescale_base_to_target,
+    shrink_ccrs_toward_reference,
+    shrink_cwr_toward_reference,
 )
 from popfc.paths import DATA_INTERIM, FULL_FIPS
 
@@ -109,6 +120,12 @@ SCENARIOS = ("baseline", "low", "high")
 # PRODUCTION version is saved to data_interim/town_forecasts.parquet.
 CCR_CAP_PRODUCTION = (0.85, 1.20)
 CCR_CAP_LEGACY = (0.5, 2.0)
+
+# v3 (Notebook-12 audit follow-up) shrinkage strength. w = P / (P + K).
+# K = 2000 (the rural threshold) gives a 2,000-person town equal weight on
+# its own CCR and the county reference; smaller towns lean county, larger
+# towns lean local.
+SHRINK_K = 2000.0
 """),
     # ---------------------------------------------------------------
     md("""
@@ -155,9 +172,45 @@ print(totals_compare[["town", f"y{PRIOR_VINTAGE_YEAR-2}", f"y{LATEST_VINTAGE_YEA
 """),
     # ---------------------------------------------------------------
     md("""
-## 2. CCRs and CWRs — v2 production: multi-vintage averaging
+## 1b. Rescale the ACS base to PEP totals (v3 — audit follow-up #1)
 
-The **v2 production** method (introduced in Batch 6 of the post-V2025
+The Notebook-12 audit found that for small towns the ACS 2020-2024
+midpoint total can disagree materially with PEP's sub-est 2022 total
+(Hampton +33%, Hartford -13%). Since Hamilton-Perry projects forward
+from the base pyramid, a wrong base level propagates into every
+forecast year. We rescale each town's ACS age × sex pyramid by a
+single factor so the town total matches PEP sub-est 2022, preserving
+the pyramid *shape* while fixing the *level*. PEP is the authoritative
+small-area total; ACS is a 5-year sample with wide small-area MOE.
+"""),
+    code("""
+town_hist = pd.read_parquet(DATA_INTERIM / "town_total_pop_history.parquet")
+pep_base = town_hist[
+    (town_hist["year"] == BASE_YEAR_TOWN)
+    & (town_hist["source"] == "census_pep")
+][["geoid", "population"]].copy()
+
+pop_latest_v3 = rescale_base_to_target(pop_latest, pep_base)
+
+# Report the per-town rescale factors.
+rf = (pop_latest_v3[["geoid", "rescale_factor"]].drop_duplicates()
+      .merge(names.reset_index(), on="geoid", how="left"))
+rf["town"] = rf["geography"].str.split(",").str[0]
+rf["acs_total"] = rf["geoid"].map(pop_latest.groupby("geoid")["population"].sum())
+rf["pep_total"] = rf["geoid"].map(pep_base.set_index("geoid")["population"])
+print("ACS-base → PEP-base rescale factors (v3):")
+print(rf[["town", "acs_total", "pep_total", "rescale_factor"]]
+      .sort_values("rescale_factor")
+      .to_string(index=False, float_format=lambda x: f"{x:,.2f}"))
+print()
+n_big = (rf["rescale_factor"].sub(1).abs() > 0.10).sum()
+print(f"{n_big} of {len(rf)} towns had |rescale − 1| > 10% (base-year disagreement).")
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 2. CCRs and CWRs — multi-vintage averaging (v2 base for v3)
+
+The multi-vintage method (introduced in Batch 6 of the post-V2025
 review) averages cohort change ratios across **10 5-year vintage pairs**
 from Batch 5's `town_agesex_history` (vintage midpoints 2007 → 2022, in
 5-year steps). Each per-pair CCR is clipped to `(0.85, 1.20)` first, then
@@ -206,21 +259,99 @@ print(cwr["cwr"].describe().to_string())
 """),
     # ---------------------------------------------------------------
     md("""
-## 3. Project each town to 2047 (unconstrained)
+## 2b. Shrink town CCRs toward the county reference (v3 — audit follow-up #3)
 
-We project twice — once with v2 multi-vintage CCRs (production) and once
-with v1 single-vintage CCRs (kept for the §4b comparison).
+The audit showed all 17 towns carry meaningful CCR sampling noise
+(median coefficient of variation > 0.20 across the 10 vintage pairs;
+Putnam/Dresden/White Creek exceed 0.50), and that Whitehall's +36%
+projection rests on one anomalously large 30-34 cohort in the ACS
+2018-2022 pyramid. Standard small-area estimation: treat each town's
+CCR as a noisy estimate and shrink it toward the much more stable
+county-aggregate CCR.
+
+We build the county reference from the *same* ACS town history
+aggregated to one geography (so it's directly comparable — same
+source, same vintages, same bands), then blend per town:
+
+> `ccr_shrunk = w · ccr_town + (1 − w) · ccr_county`,  `w = P / (P + K)`
+
+with `K = SHRINK_K` (2,000). A 2,000-person town weights its own CCR
+and the county reference equally; smaller towns lean county, larger
+towns lean local.
 """),
     code("""
-def _hp_project_all(ccr_frame: pd.DataFrame, label: str) -> pd.DataFrame:
+# County-aggregate CCR reference from the same ACS town history.
+parent_history = aggregate_history_to_parent(
+    wash_history, parent_geoid=WASHINGTON,
+    parent_geography="Washington County (MCD aggregate)",
+)
+ccr_parent = cohort_change_ratios_multi_vintage(parent_history, cap=CCR_CAP_PRODUCTION)
+
+shrink_weights = population_shrinkage_weights(pop_latest, k=SHRINK_K)
+ccr_v3 = shrink_ccrs_toward_reference(ccr_v2, ccr_parent, town_weights=shrink_weights)
+
+# Shrink the child-woman ratio too — it's the births engine and is even
+# noisier than CCRs at the town scale (both numerator and denominator are
+# small ACS counts). Whitehall's CWR is ~0.42 vs the county's ~0.24, which
+# is what drives its spurious growth under v2.
+pop_latest_county_agg = pop_latest.groupby(
+    ["sex", "age_band_start", "age_band_end"], as_index=False
+)["population"].sum()
+pop_latest_county_agg["geoid"] = WASHINGTON
+pop_latest_county_agg["geography"] = "Washington County (MCD aggregate)"
+cwr_county = child_woman_ratios(pop_latest_county_agg)
+cwr_v3 = shrink_cwr_toward_reference(cwr, cwr_county, town_weights=shrink_weights)
+
+print("CWR shrinkage — town vs county reference (children 0-4 per woman 15-49):")
+cwr_cmp = cwr_v3.pivot_table(index="geoid", columns="sex", values=["cwr_town", "cwr"])
+cwr_cmp.columns = [f"{a}_{b}" for a, b in cwr_cmp.columns]
+cwr_cmp["town"] = cwr_cmp.index.map(names["geography"].to_dict()).str.split(",").str[0]
+cwr_cmp["total_town"] = cwr_cmp["cwr_town_M"] + cwr_cmp["cwr_town_F"]
+cwr_cmp["total_shrunk"] = cwr_cmp["cwr_M"] + cwr_cmp["cwr_F"]
+print(f"  County reference total CWR: {cwr_county['cwr'].sum():.4f}")
+print(cwr_cmp.sort_values("total_town", ascending=False)
+      [["town", "total_town", "total_shrunk"]].head(6)
+      .to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+print()
+print(f"County-reference CCR rows: {len(ccr_parent):,}")
+print(f"County-reference CCR summary (closed bands):")
+print(ccr_parent[ccr_parent['age_band_start'] != 85]['ccr'].describe().round(3).to_string())
+print()
+print("Per-town shrinkage weight (w = P / (P + 2000)):")
+sw = shrink_weights.rename("w").to_frame()
+sw["town"] = sw.index.map(names["geography"].to_dict()).str.split(",").str[0]
+print(sw.sort_values("w")[["town", "w"]].to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+print()
+# How much did shrinkage move each town's mean CCR?
+move = (ccr_v3.assign(delta=(ccr_v3["ccr"] - ccr_v3["ccr_town"]).abs())
+        .groupby("geoid")["delta"].mean().rename("mean_abs_ccr_shift"))
+move = move.to_frame()
+move["town"] = move.index.map(names["geography"].to_dict()).str.split(",").str[0]
+print("Mean |CCR shift| from shrinkage, by town (largest first):")
+print(move.sort_values("mean_abs_ccr_shift", ascending=False)
+      [["town", "mean_abs_ccr_shift"]].head(8)
+      .to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+"""),
+    # ---------------------------------------------------------------
+    md("""
+## 3. Project each town to 2047 (unconstrained)
+
+We project the **v3 production** path (multi-vintage CCRs *and* CWR
+shrunk toward the county reference + PEP-rescaled base) and also the
+**v2** path (multi-vintage CCRs, raw CWR, raw ACS base — the prior
+production) so §4b can show what the audit follow-ups changed.
+"""),
+    code("""
+def _hp_project_all(ccr_frame: pd.DataFrame, cwr_frame: pd.DataFrame,
+                    base_pop: pd.DataFrame, label: str) -> pd.DataFrame:
     proj_list = []
     for geoid, name in names["geography"].items():
-        town_pop = pop_latest[pop_latest["geoid"] == geoid]
+        town_pop = base_pop[base_pop["geoid"] == geoid]
         if town_pop.empty:
             continue
         try:
             sub = project_one_county_hp(
-                town_pop, ccr_frame, cwr,
+                town_pop, ccr_frame, cwr_frame,
                 base_year=BASE_YEAR_TOWN, end_year=END_YEAR_TOWN,
                 geoid=geoid, geography=name.split(",")[0],
                 scenario="unconstrained",
@@ -232,12 +363,14 @@ def _hp_project_all(ccr_frame: pd.DataFrame, label: str) -> pd.DataFrame:
     return pd.concat(proj_list, ignore_index=True)
 
 
-unconstrained = _hp_project_all(ccr_v2, label="hp_v2_multivintage")  # production
-unconstrained_v1 = _hp_project_all(ccr_v1, label="hp_v1_acs2017_to_2022")  # comparison
+# v3 production: shrunk CCRs + shrunk CWR + PEP-rescaled base.
+unconstrained = _hp_project_all(ccr_v3, cwr_v3, pop_latest_v3, label="hp_v3_shrunk_rescaled")
+# v2 (prior production): multi-vintage CCRs, raw CWR, raw ACS base — kept for §4b comparison.
+unconstrained_v2 = _hp_project_all(ccr_v2, cwr, pop_latest, label="hp_v2_multivintage")
 
-print(f"v2 unconstrained rows: {len(unconstrained):,}  "
+print(f"v3 unconstrained rows: {len(unconstrained):,}  "
       f"({unconstrained['geoid'].nunique()} towns, years {sorted(unconstrained['year'].unique())})")
-print(f"v1 unconstrained rows: {len(unconstrained_v1):,}")
+print(f"v2 unconstrained rows: {len(unconstrained_v2):,}")
 """),
     # ---------------------------------------------------------------
     md("""
@@ -315,7 +448,7 @@ for scen in SCENARIOS:
         adj = result.adjusted.copy()
         adj["year"] = int(year)
         adj["scenario"] = scen
-        adj["projection_vintage"] = "hp_v2_multivintage"
+        adj["projection_vintage"] = "hp_v3_shrunk_rescaled"
         # IPF on a single-pass column-only is exact; report 1.0 as the
         # average constraint factor (per-cell factors are NOT uniform here,
         # but the per-town column factor is what matters for downstream).
@@ -366,97 +499,116 @@ print(county_pv.loc[constraint_years].round(0).astype(int).to_string())
 """),
     # ---------------------------------------------------------------
     md("""
-## 4b. v1 vs v2 — direct comparison
+## 4b. v2 vs v3 — what the audit follow-ups changed
 
-For full transparency, also compute the **v1 method** (single-vintage
-CCRs + pro-rata constraint to county total) on the same county
-forecast and compare the per-town trajectories. The v1 method was the
-default through Batch 5; v2 (multi-vintage CCRs + IPF) is the new
-default as of Batch 6.
+v2 (multi-vintage CCRs + IPF, raw ACS base) was the production method
+after Batch 6. v3 adds the two Notebook-12 audit follow-ups: PEP
+base-year rescaling (§1b) and CCR shrinkage toward the county
+reference (§2b). Both v2 and v3 are IPF-constrained to the same
+Notebook-08 county forecast, so the county total is identical — what
+changes is the cross-town redistribution.
 
-Expected: v2 should *reduce* the most extreme v1 outliers (the Hampton
-+188% case was a known noise artifact) and produce more believable
-trajectories for small towns, while leaving the overall county
-forecast unchanged (because IPF constrains the cross-town sum to the
-same county target).
+Expected: v3 corrects the towns the audit flagged — Hampton and
+Hartford (base-year errors) start from the right level, and Whitehall's
+unsupported +36% growth is pulled toward the county trend by CCR
+shrinkage.
 """),
     code("""
-# v1 — single-vintage CCRs + pro-rata constraint. Same county targets as v2.
-constrained_frames_v1: list[pd.DataFrame] = []
-for scen in SCENARIOS:
-    target = wash_county[wash_county["scenario"] == scen][["year", "population"]]
-    target = target[target["year"].isin(constraint_years)]
-    sub = unconstrained_v1[unconstrained_v1["year"].isin(constraint_years)].copy()
-    sub_scaled = apply_prorata_constraint(sub, target)
-    sub_scaled["scenario"] = scen
-    sub_scaled["constraint_applied"] = True
-    constrained_frames_v1.append(sub_scaled)
-# Same base-year handling.
-base_v1 = unconstrained_v1[unconstrained_v1["year"] == BASE_YEAR_TOWN].copy()
-base_v1["constraint_factor"] = 1.0
-base_v1["constraint_applied"] = False
-for scen in SCENARIOS:
-    b = base_v1.copy()
-    b["scenario"] = scen
-    constrained_frames_v1.append(b)
-town_forecasts_v1 = pd.concat(constrained_frames_v1, ignore_index=True)
+def _ipf_constrain_all(unconstrained_frame: pd.DataFrame, vintage_label: str) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    for scen in SCENARIOS:
+        for year in constraint_years:
+            target_pyramid = _county_pyramid_5yr(county_forecasts, WASHINGTON, scen, year)
+            seed = unconstrained_frame[unconstrained_frame["year"] == year][
+                ["geoid", "geography", "sex", "age_band_start", "age_band_end", "population"]
+            ].copy()
+            result = apply_ipf_constraint(
+                seed, column_targets=target_pyramid,
+                column_dims=("sex", "age_band_start"),
+            )
+            adj = result.adjusted.copy()
+            adj["year"] = int(year); adj["scenario"] = scen
+            adj["projection_vintage"] = vintage_label
+            adj["constraint_factor"] = 1.0; adj["constraint_applied"] = True
+            frames.append(adj)
+    base_u = unconstrained_frame[unconstrained_frame["year"] == BASE_YEAR_TOWN].copy()
+    base_u["constraint_factor"] = 1.0; base_u["constraint_applied"] = False
+    for scen in SCENARIOS:
+        b = base_u.copy(); b["scenario"] = scen
+        frames.append(b)
+    return pd.concat(frames, ignore_index=True)
 
-# Side-by-side town totals at 2047, baseline scenario.
-b_v1 = town_forecasts_v1[town_forecasts_v1["scenario"] == "baseline"]
-b_v2 = town_forecasts[town_forecasts["scenario"] == "baseline"]
+
+town_forecasts_v2 = _ipf_constrain_all(unconstrained_v2, "hp_v2_multivintage")
+
 def _yr_totals(df, year):
     return df[df["year"] == year].groupby(["geoid", "geography"])["population"].sum()
 
-base_pop = _yr_totals(b_v2, BASE_YEAR_TOWN)
-v1_2047 = _yr_totals(b_v1, 2047)
+b_v2 = town_forecasts_v2[town_forecasts_v2["scenario"] == "baseline"]
+b_v3 = town_forecasts[town_forecasts["scenario"] == "baseline"]
+
+# v2 and v3 have different base-year totals (v3 base is PEP-rescaled), so
+# show each version's own 2022 base alongside its 2047 endpoint.
+base_v2 = _yr_totals(b_v2, BASE_YEAR_TOWN)
+base_v3 = _yr_totals(b_v3, BASE_YEAR_TOWN)
 v2_2047 = _yr_totals(b_v2, 2047)
+v3_2047 = _yr_totals(b_v3, 2047)
 
 cmp = pd.DataFrame({
-    "pop_2022": base_pop.round(0).astype(int),
-    "v1_2047": v1_2047.round(0).astype(int),
+    "v2_base": base_v2.round(0).astype(int),
     "v2_2047": v2_2047.round(0).astype(int),
+    "v3_base": base_v3.round(0).astype(int),
+    "v3_2047": v3_2047.round(0).astype(int),
 })
-cmp["v1_pct"] = 100 * (cmp["v1_2047"] / cmp["pop_2022"] - 1)
-cmp["v2_pct"] = 100 * (cmp["v2_2047"] / cmp["pop_2022"] - 1)
-cmp["pct_change_v2_minus_v1"] = cmp["v2_pct"] - cmp["v1_pct"]
+cmp["v2_pct"] = 100 * (cmp["v2_2047"] / cmp["v2_base"] - 1)
+cmp["v3_pct"] = 100 * (cmp["v3_2047"] / cmp["v3_base"] - 1)
 cmp = cmp.reset_index()
-print("Washington towns — v1 vs v2 forecast, 2022 → 2047 baseline:")
-print(cmp.sort_values("v2_pct").to_string(index=False, float_format=lambda x: f"{x:+.1f}"))
+cmp["town"] = cmp["geography"].str.split(",").str[0]
+print("Washington towns — v2 vs v3 forecast, 2022 base → 2047 baseline:")
+print(cmp[["town", "v2_base", "v3_base", "v2_pct", "v3_pct"]]
+      .sort_values("v3_pct")
+      .to_string(index=False, float_format=lambda x: f"{x:+.1f}"))
 """),
     code("""
 fig, ax = plt.subplots(figsize=(11, 6))
-order = cmp.sort_values("v2_pct")["geography"].tolist()
+order = cmp.sort_values("v3_pct")["town"].tolist()
 y_pos = np.arange(len(order))
-v1_pcts = cmp.set_index("geography").loc[order, "v1_pct"].astype(float)
-v2_pcts = cmp.set_index("geography").loc[order, "v2_pct"].astype(float)
-ax.barh(y_pos - 0.2, v1_pcts.to_numpy(), height=0.4,
-        color="C3", alpha=0.7, label="v1 (single-vintage CCR + pro-rata)")
-ax.barh(y_pos + 0.2, v2_pcts.to_numpy(), height=0.4,
-        color="C0", alpha=0.85, label="v2 (multi-vintage CCR + IPF) — production")
+v2_pcts = cmp.set_index("town").loc[order, "v2_pct"].astype(float)
+v3_pcts = cmp.set_index("town").loc[order, "v3_pct"].astype(float)
+ax.barh(y_pos - 0.2, v2_pcts.to_numpy(), height=0.4,
+        color="C3", alpha=0.7, label="v2 (multi-vintage CCR, raw ACS base)")
+ax.barh(y_pos + 0.2, v3_pcts.to_numpy(), height=0.4,
+        color="C0", alpha=0.85, label="v3 (+ PEP rescale + CCR shrinkage) — production")
 ax.axvline(0, color="black", linewidth=0.6)
 ax.set_yticks(y_pos)
 ax.set_yticklabels(order)
 ax.set_xlabel("% population change 2022 → 2047 (baseline scenario)")
-ax.set_title("Washington towns — v1 vs v2 forecast comparison")
+ax.set_title("Washington towns — v2 vs v3 (audit follow-ups) forecast comparison")
 ax.grid(True, alpha=0.3, axis="x")
 ax.legend(loc="lower right", fontsize=9)
 fig.tight_layout()
 plt.show()
 """),
     md("""
-**Reading the comparison.** The v2 forecast (blue) shifts the
-distribution toward more realistic outcomes for small towns. The
-clearest correction is **Hampton** — v1's +188% was driven by single-
-vintage CCR noise; v2's multi-vintage averaging smooths it down to a
-believable trajectory. **Whitehall** emerges as a genuine grower
-under v2 (modest but consistent across multiple vintage pairs).
-**Greenwich** and **Cambridge**, which appeared as growers in v1,
-look more like the broader decline pattern under v2 — their v1 growth
-was partly an artifact of the same window's noise.
+**Reading the comparison.** v3 (blue) vs v2 (red), per town:
 
-The county total is unchanged by construction: IPF constrains the
-cross-town sum to the same Notebook 08 county forecast that v1 was
-constrained to. The redistribution across towns is what changed.
+- **Whitehall**: the audit's headline problem. v2 projected +36% off
+  an anomalous 30-34 ACS cohort feeding an inflated child-woman ratio
+  (CWR ≈ 0.42 vs the county's ≈ 0.24). CCR + CWR shrinkage toward the
+  county reference pulls it down to ≈ +22% — no longer a wild outlier,
+  now within the spread of the other towns. Whitehall keeps 2/3 of its
+  own signal (w ≈ 0.67 at pop 4,005), so a genuinely younger age
+  structure still shows through, just not at the artifactual level.
+- **Hampton / Hartford**: their *base* levels move (Hampton's v3 base
+  drops to the PEP 858, Hartford's rises to PEP 2,179) — the % change
+  is measured off the corrected base, so these are now anchored to the
+  authoritative total.
+- **Small towns (Putnam, Dresden, White Creek)**: shrinkage damps
+  their high-CV CCRs, so their v3 trajectories sit closer to the
+  county-wide rate.
+
+County total is unchanged — IPF constrains the cross-town sum to the
+same Notebook 08 forecast in both versions.
 """),
     # ---------------------------------------------------------------
     md("""

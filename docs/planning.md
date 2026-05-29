@@ -50,31 +50,46 @@ raw data lives in `data_raw/` (fetched via the download pipeline).
 
 ---
 
-## Current Status (as of 2026-05-25)
+## Current Status (as of 2026-05-29)
 
-**Where things stand:** Phases 1–5 complete and merged to `main`. The
-V2025 data refresh merged 2026-05-24 (commit `3111c0f`); a Batch 1 of
-review-driven quick fixes + the methodology book is in progress on
-`feat/quickfixes-batch1` and `docs/main`. 130 tests passing.
+**Where things stand:** Phases 1–5 plus the full post-review program are
+complete and merged to `main`. Since the V2025 data refresh the project
+has worked through: a methodology book + diagnostic-plot pass, an outlier
+audit, a historical-reference scenario redesign, domestic/international
+**migration decomposition** (engine + ACS B07001 age shapes), a **NYSDOH
+vital-statistics** cross-source audit (closes issue #2), reproducibility
+infrastructure (`data_raw/MANIFEST.toml` + inlined foundational files),
+**USALEEP-adjusted Washington mortality** (now the production survival
+schedule), a **town-forecast audit** (Notebook 12), and **town forecast
+v3** (PEP base-year rescaling + CCR/CWR shrinkage toward the county).
+`make run-all` (Notebooks 01–10) runs clean end-to-end in ~40s.
+**207 tests passing.**
 
 **Headline numbers (Washington County, baseline scenario):** 59,839 in
-2024 → 52,979 in 2040 → **47,567 in 2050** (~20.5% decline).
+2024 → 53,361 in 2040 → **47,990 in 2050** (~19.8% decline). The 2050
+figure rose from 47,567 once USALEEP-adjusted Washington mortality
+became the production survival schedule.
 
-For the chronological "what we did" record — including the V2025
-refresh, the methodology book, plot improvements, and every other
-recent change — see **[`docs/changelog.md`](changelog.md)**. That is
-the canonical current-state reference. The phase sections below
-preserve the original Phase 1-5 narrative for context but the
-numbers in them are frozen at the time each phase was merged.
+For the chronological "what we did" record see
+**[`docs/changelog.md`](changelog.md)** — the canonical current-state
+reference, newest first. The phase sections below preserve the original
+Phase 1-5 narrative for context; their numbers are frozen at each
+phase's merge time. Notebooks now run **01–12**: 01–10 are the forecast
+pipeline (`make run-all`); 11 is rural-town descriptive analysis; 12 is
+the town-forecast diagnostic/audit (11 and 12 are standalone).
 
-**Active follow-ups** (tracked but not yet started):
-- `feat/data-archival` — `data_raw/MANIFEST.toml` with SHA-256 hashes
-  + URLs; commit small foundational raw files inline (reproducibility
-  against URL rot).
-- Post-review batches 2-7 — outlier audit, scenario redesign,
-  migration decomposition, historical town data, better town
-  forecasts, mortality refinement. See `docs/comments.md` (user's
-  review notes, not tracked in git) for the source list.
+**Current focus / active follow-ups:**
+- **New town-forecast approach** under discussion (2026-05-29). The v3
+  town forecasts are as good as the ACS/PEP small-area data supports —
+  the honest ceiling is sampling noise, not the method. The user is
+  proposing a different approach to towns. Current method:
+  `docs/methodology.md` §"Town forecast v3".
+- **Deferred** (Notebook 12 recommendation #2): extend the town IPF to
+  county age × sex *row* marginals via an independent town-total anchor.
+  Uncertain payoff — no clearly-better town-total source than the
+  Hamilton-Perry cohort-change ratios already in use.
+- Untouched, lower-priority: final-deliverable polish (Notebook 10 as a
+  reader-facing summary), `data_dictionary.md` / `workflow.md` currency.
 
 ### Phase 1 — COMPLETE (refreshed numbers under V2025 refresh)
 
@@ -401,43 +416,47 @@ Copy-paste into a new session to continue:
 > `/home/donboyd5/Documents/python_projects/popfc/`. Python 3.12 venv at `.venv/`,
 > installable package at `src/popfc/`. Repo at https://github.com/donboyd5/popfc.
 >
-> **Status: Phases 1-5 are COMPLETE and merged to main.** The full pipeline
-> (Notebooks 01-10) produces a working forecast end-to-end. 130 tests pass.
-> Forecast base year is **2024**; Washington baseline 2050 is **47,567**
-> (~20.5% decline from 2024).
+> **Status: Phases 1-5 plus the full post-review program are COMPLETE and merged
+> to main.** The pipeline (Notebooks 01-10) runs clean end-to-end via `make
+> run-all` in ~40s; **207 tests pass**. Forecast base year is **2024**; Washington
+> baseline 2050 is **47,990** (~19.8% decline from 2024, with USALEEP-adjusted
+> Washington mortality as the production survival schedule).
 >
 > **Where to find current state:** `docs/changelog.md` is the canonical
-> "what we did recently" record — read it for the latest merged work
-> (most recent first). `docs/planning.md` retains the original phase
-> narrative for context but its numbers are frozen at each phase's
-> merge time; the changelog has fresher detail.
+> "what we did recently" record (newest first) — read it for the latest
+> merged work: migration decomposition, NYSDOH vital stats, data-archival,
+> USALEEP qx-ratio mortality, the town-forecast audit, and town forecast v3.
+> `docs/planning.md`'s phase sections are frozen historical context; the
+> changelog has fresher detail.
 >
 > Start by reading, in order:
-> 1. `CLAUDE.md`              — project rules (git workflow, data conventions)
-> 2. `docs/workflow.md`       — how to run the pipeline end-to-end
-> 3. `docs/methodology.md`    — plain-language reference for every method, acronym, and notation symbol
-> 4. `docs/changelog.md`      — recent work, newest first
-> 5. `docs/planning.md`       — historical phase narrative (frozen)
+> 1. `CLAUDE.md`               — project rules (git workflow, data conventions)
+> 2. `docs/workflow.md`        — how to run the pipeline end-to-end
+> 3. `docs/methodology.md`     — plain-language reference for every method, acronym, and notation symbol
+> 4. `docs/changelog.md`       — recent work, newest first
+> 5. `docs/planning.md`        — this status section + frozen phase narrative
 > 6. `docs/data_dictionary.md` — column reference for every parquet artifact
 >
 > Headline outputs already exist:
 > - `data_interim/county_forecasts.parquet` — 6 counties × 3 scenarios × 27 yrs (2024-2050) × age × sex
-> - `data_interim/town_forecasts.parquet`   — 17 Washington towns × 3 scenarios × 6 yrs × age-band × sex
+> - `data_interim/county_forecasts_components.parquet` — domestic/international component scenarios (Batch 4b)
+> - `data_interim/town_forecasts.parquet`   — 17 Washington towns × 3 scenarios × 6 yrs × age-band × sex (v3: PEP-rescaled base + CCR/CWR shrinkage + IPF)
 > - `data_final/*` — clean CSV + parquet exports for downstream use
-> - `notebooks/10_final_summary.ipynb` — current summary charts
+> - Notebooks: 01-10 forecast pipeline; 11 rural-town descriptive analysis; 12 town-forecast diagnostic/audit
 >
 > Key reminders:
-> - **Never work on main.** Code goes on `feat/*` branches; docs go on the long-lived `docs/main` branch via the worktree at `.worktree-docs/`. Both merge into `main` via normal branch flow. See `CLAUDE.md` for the full rules.
-> - Loaders use a **string-first ingestion pattern** — raw CSVs are read with `dtype=str`, then explicitly coerced with `coerce_numeric()` from `popfc.data._common`. Apply this to any new loader.
-> - The legacy R/Quarto project was deleted in Phase 5; its prose/R docs remain at `docs/r_reference/` for reference only.
-> - Census API key is read from `CENSUS_API_KEY` env var. ACS responses are cached under `data_raw/acs/<year>/`.
+> - **Never work on main.** Code goes on `feat/*` branches; docs go on the long-lived `docs/main` branch via the worktree at `.worktree-docs/`. Both merge into `main` via normal branch flow — **don't merge to main without my go-ahead.** See `CLAUDE.md`.
+> - Loaders use a **string-first ingestion pattern** — read raw CSVs with `dtype=str`, then explicitly coerce with `coerce_numeric()` from `popfc.data._common`. Apply to any new loader.
+> - Notebooks are generated from `_build_NN_*.py` scripts; outputs are stripped on commit (nbstripout). Edit the `_build` script, regenerate, re-execute — don't hand-edit the `.ipynb`.
+> - `CENSUS_API_KEY` is set in `~/.profile` and in `.claude/settings.local.json` (env); ACS responses are cached under `data_raw/acs/<year>/`.
+> - The legacy R/Quarto project was deleted in Phase 5; `docs/r_reference/` retains its prose for reference only.
 >
-> **What I want to do this session:** [fill in — e.g., add more plots and
-> analyses to the forecast outputs; build a sensitivity analysis; add
-> geographic maps of Washington towns; etc.] Build new analyses as a new
-> notebook (`notebooks/11_<name>.ipynb` with companion `_build_11_*.py`
-> generator script) — don't modify Notebook 10. Cut a new feat branch
-> (`feat/<descriptive>`) from main before writing code.
+> **What I want to do this session:** [fill in]. Current live thread (2026-05-29):
+> designing a **new approach to the town forecasts** — v3 is as good as the
+> ACS/PEP small-area data supports, and I'm proposing a different approach. For
+> new analyses, add a new notebook (`notebooks/NN_<name>.ipynb` + companion
+> `_build_NN_*.py`) rather than modifying existing ones; cut a `feat/<descriptive>`
+> branch from main before writing code.
 >
 > Also check `~/.claude/projects/-home-donboyd5-Documents-python-projects-popfc/memory/MEMORY.md` for cross-session guidance.
 

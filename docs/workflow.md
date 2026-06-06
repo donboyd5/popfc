@@ -59,7 +59,7 @@ Each notebook lives at `notebooks/<NN>_<name>.ipynb` and has a companion `notebo
 
 Assuming the project is set up (see "First-time setup" below):
 
-```bash
+``` bash
 cd ~/Documents/python_projects/popfc
 source .venv/bin/activate
 export CENSUS_API_KEY=<your-key>   # only needed if you'll re-pull ACS
@@ -83,16 +83,13 @@ pytest -q
 That's it. The headline outputs are:
 
 - `data_interim/population_reconciled.parquet` — historical population
-- `data_interim/county_components.parquet`     — historical components of change
+- `data_interim/county_components.parquet` — historical components of change
 - `data_interim/county_agesex_1990_2024.parquet` — historical age × sex
-- `data_interim/county_forecasts.parquet`      — county projections 2024 → 2050
-- `data_interim/town_forecasts.parquet`        — Washington town projections 2022 → 2047
-- `data_final/*`                                — cleaned CSV+parquet exports for downstream use (Notebook 10)
+- `data_interim/county_forecasts.parquet` — county projections 2024 → 2050
+- `data_interim/town_forecasts.parquet` — Washington town projections 2022 → 2047
+- `data_final/*` — cleaned CSV+parquet exports for downstream use (Notebook 10)
 
-For consumers who don't need the full pipeline, `data_final/` is the
-entry point — `summary_headline.csv`, `county_forecast_totals.csv`,
-`town_forecast_totals.csv`, plus the full-detail age × sex parquets.
-Column descriptions live in [`docs/data_dictionary.md`](data_dictionary.md).
+For consumers who don't need the full pipeline, `data_final/` is the entry point — `summary_headline.csv`, `county_forecast_totals.csv`, `town_forecast_totals.csv`, plus the full-detail age × sex parquets. Column descriptions live in [`docs/data_dictionary.md`](data_dictionary.md).
 
 ------------------------------------------------------------------------
 
@@ -102,103 +99,49 @@ Every notebook has the same five-section structure: load → transform → diagn
 
 ### 01 — Population reconciliation
 
-**Reads:** raw Census PEP (3 vintages) + NYSDOL annual estimates
-**Writes:** `population_all_sources.parquet`, `population_reconciled.parquet`
-**Decides:** for each (county, year) which source is authoritative.
-**Every retained value is a July 1 estimate**, including the decennial
-years 2000/2010/2020 — we do *not* mix April-1 census enumerations into
-the otherwise July-1 series (that would create a ~3-month phase shift
-at each decade boundary). The April-1 decennial counts are loaded into
-`population_all_sources.parquet` for QA / cross-check but never enter
-the reconciled series. The rule:
-- **2000-2019**: NYSDOL July-1 intercensal estimate (continuous through
-  the 2000 and 2010 decennials).
-- **2020+**: Census PEP July-1 postcensal estimate, latest vintage
-  (covers the 2020 decennial as the base of the postcensal series).
+**Reads:** raw Census PEP (3 vintages) + NYSDOL annual estimates **Writes:** `population_all_sources.parquet`, `population_reconciled.parquet` **Decides:** for each (county, year) which source is authoritative. **Every retained value is a July 1 estimate**, including the decennial years 2000/2010/2020 — we do *not* mix April-1 census enumerations into the otherwise July-1 series (that would create a \~3-month phase shift at each decade boundary). The April-1 decennial counts are loaded into `population_all_sources.parquet` for QA / cross-check but never enter the reconciled series. The rule: - **2000-2019**: NYSDOL July-1 intercensal estimate (continuous through the 2000 and 2010 decennials). - **2020+**: Census PEP July-1 postcensal estimate, latest vintage (covers the 2020 decennial as the base of the postcensal series).
 
 ### 02 — Components audit
 
-**Reads:** Census PEP components + Notebook 01's reconciled totals
-**Writes:** `county_components.parquet`
-**Verifies:** the demographic identity Pop(t) = Pop(t-1) + Births - Deaths + NetMig + Residual.
-Cross-checks PEP counts against PEP rate-reconstruction.
+**Reads:** Census PEP components + Notebook 01's reconciled totals **Writes:** `county_components.parquet` **Verifies:** the demographic identity Pop(t) = Pop(t-1) + Births - Deaths + NetMig + Residual. Cross-checks PEP counts against PEP rate-reconstruction.
 
 ### 03 — Age/sex audit
 
-**Reads:** CDC Bridged-Race + Census SYA
-**Writes:** `county_agesex_1990_2024.parquet`
-**Quantifies:** the 2020 bridged-vs-unbridged methodology seam (~0.8% in
-Washington).
+**Reads:** CDC Bridged-Race + Census SYA **Writes:** `county_agesex_1990_2024.parquet` **Quantifies:** the 2020 bridged-vs-unbridged methodology seam (\~0.8% in Washington).
 
 ### 04 — External data quick-look
 
-**Reads:** ACS via API (cached) + NCHS life tables
-**Writes:** `life_tables.parquet`
-**Diagnostic:** ACS county totals vs reconciled PEP at the 5-year midpoint;
-quick looks at foreign-born share, mover share, age structure.
+**Reads:** ACS via API (cached) + NCHS life tables **Writes:** `life_tables.parquet` **Diagnostic:** ACS county totals vs reconciled PEP at the 5-year midpoint; quick looks at foreign-born share, mover share, age structure.
 
 ### 05 — Fertility prep
 
-**Reads:** `county_components.parquet`, `population_reconciled.parquet`,
-`county_agesex_1990_2024.parquet`
-**Writes:** `asfr.parquet`
-**Method:** scale NCHS 2023 national ASFR schedule to match observed
-total births per county-year. The age pattern is national; the level is
-local.
+**Reads:** `county_components.parquet`, `population_reconciled.parquet`, `county_agesex_1990_2024.parquet` **Writes:** `asfr.parquet` **Method:** scale NCHS 2023 national ASFR schedule to match observed total births per county-year. The age pattern is national; the level is local.
 
 ### 06 — Mortality prep
 
-**Reads:** `life_tables.parquet`
-**Writes:** `survival_rates.parquet`
-**Method:** turn the NY state 2022 life table into single-year survival
-rates (S(x)=L(x+1)/L(x), boundary at age 100 via Preston's combined formula).
+**Reads:** `life_tables.parquet` **Writes:** `survival_rates.parquet` **Method:** turn the NY state 2022 life table into single-year survival rates (S(x)=L(x+1)/L(x), boundary at age 100 via Preston's combined formula).
 
 ### 07 — Migration prep
 
-**Reads:** `county_agesex_1990_2024.parquet`, `life_tables.parquet`
-**Writes:** `net_migration_rates.parquet`
-**Method:** residual method — net migration is what's left after
-projecting last year's pop forward by survival. Averaged across the
-2020-21, 2021-22, 2022-23, 2023-24 year-pairs (4 pairs) to reduce noise.
+**Reads:** `county_agesex_1990_2024.parquet`, `life_tables.parquet` **Writes:** `net_migration_rates.parquet` **Method:** residual method — net migration is what's left after projecting last year's pop forward by survival. Averaged across the 2020-21, 2021-22, 2022-23, 2023-24 year-pairs (4 pairs) to reduce noise.
 
 ### 08 — County forecast
 
-**Reads:** survival, asfr, net_mig, plus the 2024 base population from
-`county_agesex_1990_2024.parquet`
-**Writes:** `county_forecasts.parquet`
-**Method:** runs the cohort-component engine in `popfc.models.cohort_component`
-for Washington + 5 validation counties, 2024 → 2050, under three
-scenarios (low / baseline / high). Overlays the Cornell PAD benchmark.
+**Reads:** survival, asfr, net_mig, plus the 2024 base population from `county_agesex_1990_2024.parquet` **Writes:** `county_forecasts.parquet` **Method:** runs the cohort-component engine in `popfc.models.cohort_component` for Washington + 5 validation counties, 2024 → 2050, under three scenarios (low / baseline / high). Overlays the Cornell PAD benchmark.
 
 ### 09 — Town forecast
 
-**Reads:** ACS B01001 for Washington MCDs (cached, two vintages —
-2015-2019 and 2020-2024) + `county_forecasts.parquet`
-**Writes:** `town_forecasts.parquet`
-**Method:** Hamilton-Perry per town (17 MCDs in Washington County) using
-empirical cohort-change ratios from the two ACS vintages, with CCRs
-capped at `[0.5, 2.0]` to dampen small-area sampling noise. CWR closure
-for the 0-4 band. Projections at 5-year cadence (2022, 2027, 2032, 2037,
-2042, 2047). At each forecast year, town totals are pro-rata constrained
-to the matching county forecast under each scenario.
+**Reads:** ACS B01001 for Washington MCDs (cached, two vintages — 2015-2019 and 2020-2024) + `county_forecasts.parquet` **Writes:** `town_forecasts.parquet` **Method:** Hamilton-Perry per town (17 MCDs in Washington County) using empirical cohort-change ratios from the two ACS vintages, with CCRs capped at `[0.5, 2.0]` to dampen small-area sampling noise. CWR closure for the 0-4 band. Projections at 5-year cadence (2022, 2027, 2032, 2037, 2042, 2047). At each forecast year, town totals are pro-rata constrained to the matching county forecast under each scenario.
 
 ### 10 — Final summary
 
-**Reads:** every `data_interim/*` parquet
-**Writes:** every `data_final/*` artifact (via
-`popfc.reporting.export.write_final_exports`); no new interim file.
-**Content:** headline trajectory under three scenarios with Cornell PAD
-overlay; cohort context (Washington vs five neighbors); decomposition
-of decline into natural change vs net migration; age pyramid 2024 vs
-2050; per-town table and trajectory chart; town shares of county. Last
-cell regenerates `data_final/`.
+**Reads:** every `data_interim/*` parquet **Writes:** every `data_final/*` artifact (via `popfc.reporting.export.write_final_exports`); no new interim file. **Content:** headline trajectory under three scenarios with Cornell PAD overlay; cohort context (Washington vs five neighbors); decomposition of decline into natural change vs net migration; age pyramid 2024 vs 2050; per-town table and trajectory chart; town shares of county. Last cell regenerates `data_final/`.
 
 ------------------------------------------------------------------------
 
 ## Dependencies between notebooks
 
-The notebooks form a DAG. If you re-run an upstream one, you'll want
-to re-run everything downstream. The dependencies are:
+The notebooks form a DAG. If you re-run an upstream one, you'll want to re-run everything downstream. The dependencies are:
 
 ```
 01 ──► 02 ──► 05 ──┐
@@ -220,17 +163,15 @@ Practically:
 - A newer NCHS life table → re-run 04, 06, 07, 08, 09
 - Changing forecast scenarios → re-run 08, 09, 10
 - Changing the town-level CCR cap → re-run 09 and 10
-- Re-exporting `data_final/` only → re-run 10 (or
-  `python -c 'from popfc.reporting.export import write_final_exports; write_final_exports()'`)
+- Re-exporting `data_final/` only → re-run 10 (or `python -c 'from popfc.reporting.export import write_final_exports; write_final_exports()'`)
 
 ------------------------------------------------------------------------
 
 ## Refreshing raw inputs
 
-Raw files live under `data_raw/<source>/`. Every refreshable source is
-registered in `src/popfc/data/download.py`:
+Raw files live under `data_raw/<source>/`. Every refreshable source is registered in `src/popfc/data/download.py`:
 
-```bash
+``` bash
 # See what's registered
 python -m popfc.data.download --list
 
@@ -244,100 +185,61 @@ python -m popfc.data.download
 python -m popfc.data.download --force
 ```
 
-NCHS files are stable URLs (NVSR FTP). ACS pulls require
-`CENSUS_API_KEY` in the environment.
+NCHS files are stable URLs (NVSR FTP). ACS pulls require `CENSUS_API_KEY` in the environment.
 
-To pull a newer NCHS vintage: update `LATEST_ACS5_YEAR` in
-`src/popfc/data/acs.py` (one line) for ACS, or change the
-`DEFAULT_*` paths in `src/popfc/data/nchs.py` for NCHS life tables.
-The `download.py` registry also needs the new URL added.
+To pull a newer NCHS vintage: update `LATEST_ACS5_YEAR` in `src/popfc/data/acs.py` (one line) for ACS, or change the `DEFAULT_*` paths in `src/popfc/data/nchs.py` for NCHS life tables. The `download.py` registry also needs the new URL added.
 
 ### How ACS data is fetched
 
-We talk to the Census Data API directly via a hand-rolled wrapper at
-`src/popfc/data/acs.py` — no third-party package (`cenpy`, `census`,
-`pyacs`). Per ACS table group request, we:
+We talk to the Census Data API directly via a hand-rolled wrapper at `src/popfc/data/acs.py` — no third-party package (`cenpy`, `census`, `pyacs`). Per ACS table group request, we:
 
-1. Build a URL like `https://api.census.gov/data/{year}/acs/acs5?get=group({group})&for={geography}&in={parent_filter}&key={CENSUS_API_KEY}`.
-2. Fetch JSON; cache to `data_raw/acs/{year}/{group}_{geo_spec}.json` so
-   subsequent loads are zero-network.
-3. Parse via `load_acs5_group(group, year, geography=...)` which returns
-   a tidy DataFrame with one row per (geoid × variable).
+1.  Build a URL like `https://api.census.gov/data/{year}/acs/acs5?get=group({group})&for={geography}&in={parent_filter}&key={CENSUS_API_KEY}`.
+2.  Fetch JSON; cache to `data_raw/acs/{year}/{group}_{geo_spec}.json` so subsequent loads are zero-network.
+3.  Parse via `load_acs5_group(group, year, geography=...)` which returns a tidy DataFrame with one row per (geoid × variable).
 
-We keep this thin (no third-party package) so the cache strategy and
-geography-filter logic stay visible. The variable metadata for every
-year is also cached as `_variables.json` so we can look up column
-descriptions without re-hitting the API.
+We keep this thin (no third-party package) so the cache strategy and geography-filter logic stay visible. The variable metadata for every year is also cached as `_variables.json` so we can look up column descriptions without re-hitting the API.
 
 ### NYSDOL "data publication date" vs retrieval date
 
-NYSDOL files in `data_raw/nysdol/` use the filename convention
-`Annual_..._beginning_1970_d<YYYYMMDD>_r<YYYYMMDD>.csv` where:
-- `d<YYYYMMDD>` is when data.ny.gov last refreshed the dataset
-  (Socrata `rowsUpdatedAt`)
-- `r<YYYYMMDD>` is when we ran `python -m popfc.data.download`
+NYSDOL files in `data_raw/nysdol/` use the filename convention `Annual_..._beginning_1970_d<YYYYMMDD>_r<YYYYMMDD>.csv` where: - `d<YYYYMMDD>` is when data.ny.gov last refreshed the dataset (Socrata `rowsUpdatedAt`) - `r<YYYYMMDD>` is when we ran `python -m popfc.data.download`
 
-The `vintage` column in parquet outputs uses the data-publication date:
-`nysdol_2026-04-01`, not the retrieval date. So "the same vintage" means
-"the same upstream data," regardless of when we last fetched.
+The `vintage` column in parquet outputs uses the data-publication date: `nysdol_2026-04-01`, not the retrieval date. So "the same vintage" means "the same upstream data," regardless of when we last fetched.
 
 ------------------------------------------------------------------------
 
 ## When you want to add a new analytical scenario
 
-Today the forecast knobs are two scalar multipliers (ASFR and net
-migration). To add a scenario:
+Today the forecast knobs are two scalar multipliers (ASFR and net migration). To add a scenario:
 
-1. Edit `SCENARIOS` in `notebooks/_build_08_county_forecast.py`.
-2. Regenerate the notebook: `python notebooks/_build_08_county_forecast.py`.
-3. Re-execute the notebook.
+1.  Edit `SCENARIOS` in `notebooks/_build_08_county_forecast.py`.
+2.  Regenerate the notebook: `python notebooks/_build_08_county_forecast.py`.
+3.  Re-execute the notebook.
 
-To add a more expressive scenario (time-varying paths, age-specific
-overrides), you'd extend `project_one_county()` in
-`src/popfc/models/cohort_component.py` first — currently it accepts
-only scalar multipliers.
+To add a more expressive scenario (time-varying paths, age-specific overrides), you'd extend `project_one_county()` in `src/popfc/models/cohort_component.py` first — currently it accepts only scalar multipliers.
 
 ------------------------------------------------------------------------
 
 ## When you want to add new counties or change the cohort
 
-Edit the `COHORT` dict at the top of Notebook 08 (and 01, 02, 03, 07 if
-you want the diagnostic plots to include them). The engine is
-county-agnostic; the only constraint is that the county appears in
-`asfr.parquet`, `net_migration_rates.parquet`, and the base-year
-age/sex frame.
+Edit the `COHORT` dict at the top of Notebook 08 (and 01, 02, 03, 07 if you want the diagnostic plots to include them). The engine is county-agnostic; the only constraint is that the county appears in `asfr.parquet`, `net_migration_rates.parquet`, and the base-year age/sex frame.
 
-Currently the loaders are all statewide-by-default (per CLAUDE.md rule
-1), so any of the 62 NY counties is automatically available — no data
-changes needed.
+Currently the loaders are all statewide-by-default (per CLAUDE.md rule 1), so any of the 62 NY counties is automatically available — no data changes needed.
 
 ------------------------------------------------------------------------
 
 ## Phase 4 — town forecasts (delivered in Notebook 09)
 
-Hamilton-Perry projector applied to each of Washington's 17 towns,
-with town totals pro-rata constrained to the Notebook 08 county
-forecast under each scenario. Outputs are at 5-year cadence (2022,
-2027, ..., 2047).
+Hamilton-Perry projector applied to each of Washington's 17 towns, with town totals pro-rata constrained to the Notebook 08 county forecast under each scenario. Outputs are at 5-year cadence (2022, 2027, ..., 2047).
 
-For very small towns (Putnam at 540, Dresden at 551, Hampton at
-1,145), ACS sampling noise produces noisy per-cohort CCRs that can
-compound to implausible projections. The default `[0.5, 2.0]` cap on
-CCRs prevents the worst runaways; tighter caps `[0.7, 1.5]` further
-dampen at the cost of more conservative town-to-town variation.
+For very small towns (Putnam at 540, Dresden at 551, Hampton at 1,145), ACS sampling noise produces noisy per-cohort CCRs that can compound to implausible projections. The default `[0.5, 2.0]` cap on CCRs prevents the worst runaways; tighter caps `[0.7, 1.5]` further dampen at the cost of more conservative town-to-town variation.
 
-Possible refinements not in v1:
-- IPF constraint (match county age × sex marginals, not just total)
-- Use county-level CCRs as a fallback when town CCRs hit the cap
-- Multiple ACS vintages averaged for a smoother baseline
-- Town-level cohort-component model where sub-county vital stats
-  exist (e.g., NYSDOH births by sub-county place if pulled later)
+Possible refinements not in v1: - IPF constraint (match county age × sex marginals, not just total) - Use county-level CCRs as a fallback when town CCRs hit the cap - Multiple ACS vintages averaged for a smoother baseline - Town-level cohort-component model where sub-county vital stats exist (e.g., NYSDOH births by sub-county place if pulled later)
 
 ------------------------------------------------------------------------
 
 ## First-time setup (already done, but for reference)
 
-```bash
+``` bash
 cd ~/Documents/python_projects/popfc
 python3.12 -m venv .venv
 source .venv/bin/activate
@@ -354,20 +256,10 @@ pytest -q                              # confirms install
 
 ## When something breaks
 
-The notebooks are deterministic — same inputs, same outputs. If a
-notebook starts failing where it previously worked, the most likely
-causes are:
+The notebooks are deterministic — same inputs, same outputs. If a notebook starts failing where it previously worked, the most likely causes are:
 
-1. **A loader's input file changed**. Run `python -m popfc.data.download
-   --list` to see what's cached vs missing. If you intentionally
-   refreshed a file, re-run the affected downstream notebook(s).
-2. **A schema constant moved**. The canonical schemas live in
-   `src/popfc/data/_common.py` (POP_LONG, COMPONENTS_LONG, AGESEX_LONG,
-   LIFE_TABLE) and `src/popfc/models/*.py` (SURVIVAL_RATES,
-   ASFR_LONG, NET_MIGRATION_RATES, PROJECTION, HP_PROJECTION). Loaders'
-   output frames must match these column orders exactly.
-3. **The test suite catches almost all of this** —
-   run `pytest -q` and follow the failures backward.
+1.  **A loader's input file changed**. Run `python -m popfc.data.download --list` to see what's cached vs missing. If you intentionally refreshed a file, re-run the affected downstream notebook(s).
+2.  **A schema constant moved**. The canonical schemas live in `src/popfc/data/_common.py` (POP_LONG, COMPONENTS_LONG, AGESEX_LONG, LIFE_TABLE) and `src/popfc/models/*.py` (SURVIVAL_RATES, ASFR_LONG, NET_MIGRATION_RATES, PROJECTION, HP_PROJECTION). Loaders' output frames must match these column orders exactly.
+3.  **The test suite catches almost all of this** — run `pytest -q` and follow the failures backward.
 
-For real bugs, open a GitHub issue. The current list:
-https://github.com/donboyd5/popfc/issues
+For real bugs, open a GitHub issue. The current list: https://github.com/donboyd5/popfc/issues

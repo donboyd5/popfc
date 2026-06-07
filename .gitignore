@@ -44,3 +44,11 @@ data_final/
 # Build artifacts
 build/
 dist/
+
+# Rendered Quarto/HTML docs — regenerable from the .md/.qmd sources.
+docs/*.html
+docs/*_files/
+
+# Claude Code machine-local settings + scratch
+.claude/settings.local.json
+*.tmp
